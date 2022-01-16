@@ -1,2 +1,2 @@
-# cbf_opt
+# CBF Optimization
 Toolbox for solving CBFs in Python
