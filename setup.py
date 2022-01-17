@@ -2,7 +2,7 @@ import setuptools
 
 
 setuptools.setup(
-    name="cbf_qp",
+    name="cbf_opt",
     version="0.1.0",
     description="CBF QP implementation in Python",
     author="Sander Tonkens",
