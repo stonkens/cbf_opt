@@ -12,7 +12,9 @@ class CBF(metaclass=abc.ABCMeta):
         :param time: time
         :return: is safe
         """
-        return self.vf(state, time) >= 0
+        return (
+            self.vf(state, time) >= 0
+        )  # TODO: This is safe with respect to CBF, not with respect to obstacle (more safety from obstacle)
 
     @abc.abstractmethod
     def vf(self, state, time) -> float:
@@ -49,3 +51,38 @@ class ControlAffineCBF(CBF):
         Lf = np.atleast_1d(grad_vf @ f)
         Lg = np.atleast_2d(grad_vf @ g)
         return Lf, Lg
+
+
+class ImplicitCBF(abc.ABCMeta):
+    def __init__(self, dynamics, params, **kwargs) -> None:
+        self.dynamics = dynamics
+        self.backup_policy = kwargs.get(
+            "backup_policy", lambda x, t: np.zeros(self.dynamics.control_dims)
+        )
+
+    @abc.abstractmethod
+    def backup_vf(self, state, time):
+        """
+        Implements the value function of the backup set h(x)
+        """
+
+    @abc.abstractmethod
+    def _grad_backup_vf(self, state, time):
+        """Implements the gradient of the value function of the backup set h(x)"""
+
+    @abc.abstractmethod
+    def grad_f_cl(self, state, time):
+        """Implements the gradient of the closed loop dynamics under the
+        backup policy pi_0(x) -> Handderived"""
+
+    @abc.abstractmethod
+    def safety_vf(self, state, time):
+        """Implements the value function h(x) defining the safety set (can have multiple)"""
+
+    @abc.abstractmethod
+    def _grad_safety_vf(self, state, time):
+        """Implements the gradient of the value function of the safety set h(x)"""
+
+    def sensitivity_dt(self, Q, state, time):
+        """ode presenting sensitivity matrix dQ_dt = Df_cl(\phi_t^u(x_0) * Q(t)"""
+        return self.grad_f_cl(state, time) @ Q
