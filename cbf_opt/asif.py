@@ -8,6 +8,8 @@ class ASIF(metaclass=abc.ABCMeta):
         self.dynamics = dynamics
         self.cbf = cbf
         self.alpha = kwargs.get("alpha", lambda x: x)
+        self.verbose = kwargs.get("verbose", False)
+        self.solver = kwargs.get("solver", "OSQP")
         self.nominal_policy = kwargs.get(
             "nominal_policy", lambda x, t: np.atleast_1d(0)
         )  # TODO: Implement correct dims for control output
@@ -41,10 +43,14 @@ class ControlAffineASIF(ASIF):
         self.QP = cp.Problem(self.obj, self.constraints)
 
     def set_constraint(self, Lf_h, Lg_h, h):
-        self.b.value = self.alpha(h) + Lf_h
-        self.A.value = Lg_h
+        try:
+            self.b.value = self.alpha(h) + Lf_h
+            self.A.value = Lg_h
+        except ValueError:
+            pass
 
     def __call__(self, state, nominal_control=None, time=0.0):
+        solver_failure = False
         if not hasattr(self, "QP"):
             self.setup_optimization_problem()
         h = self.cbf.vf(state, time)
@@ -56,10 +62,11 @@ class ControlAffineASIF(ASIF):
             self.nominal_control.value = nominal_control
         else:
             self.nominal_control.value = self.nominal_policy(state, time)
-
-        self.QP.solve(verbose=False)
-
-        if self.QP.status in ["infeasible", "unbounded"]:
+        try:
+            self.QP.solve(solver=self.solver, verbose=self.verbose)
+        except cp.SolverError:
+            solver_failure = True
+        if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
             # TODO: Add logging / printing
             if (self.umin is None) and (self.umax is None):
                 return np.atleast_1d(self.nominal_control.value)
@@ -67,7 +74,8 @@ class ControlAffineASIF(ASIF):
                 if self.umin and self.umax:
                     # TODO: This should depend on "controlMode"
                     return np.atleast_1d(
-                        np.int64(Lg_h >= 0) * self.umax + np.int64(Lg_h < 0) * self.umin
+                        np.int64(Lg_h >= 0) @ np.atleast_1d(self.umax)
+                        + np.int64(Lg_h < 0) @ np.atleast_1d(self.umin)
                     )
                 elif (Lg_h >= 0).all() and self.umax:
                     return np.atleast_1d(self.umax)
