@@ -11,8 +11,8 @@ class ASIF(metaclass=abc.ABCMeta):
         self.verbose = kwargs.get("verbose", False)
         self.solver = kwargs.get("solver", "OSQP")
         self.nominal_policy = kwargs.get(
-            "nominal_policy", lambda x, t: np.atleast_1d(0)
-        )  # TODO: Implement correct dims for control output
+            "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dim)
+        )
 
     @abc.abstractmethod
     def __call__(self, state, nominal_control, time):
@@ -43,11 +43,8 @@ class ControlAffineASIF(ASIF):
         self.QP = cp.Problem(self.obj, self.constraints)
 
     def set_constraint(self, Lf_h, Lg_h, h):
-        try:
-            self.b.value = self.alpha(h) + Lf_h
-            self.A.value = Lg_h
-        except ValueError:
-            pass
+        self.b.value = self.alpha(h) + Lf_h
+        self.A.value = Lg_h
 
     def __call__(self, state, nominal_control=None, time=0.0):
         solver_failure = False
@@ -187,8 +184,5 @@ class GeneralizedControlAffineASIF(GeneralizedASIF, ControlAffineASIF):
         self.obj += cp.Minimize(self.penalty_coeff * (self.beta - self.beta0) ** 2)
         self.constraints[0] = self.A @ self.filtered_control + self.b >= self.beta
 
-    # def set_constraint(self, Lf_h, Lg_h, h):
-    #     self.b.value = self.alpha(h) + Lf_h - self.beta
-    #     self.A.value = Lg_h
     def get_beta(self):
         return self.beta.value
