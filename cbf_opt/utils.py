@@ -117,4 +117,3 @@ class TabularCBF(CBF):
                                                         raise NotImplementedError(
                                                             "Only up to 6 dimensions supported"
                                                         )
-        self.vf_table = self.vf_table.T
