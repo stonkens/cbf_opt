@@ -163,15 +163,15 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         for i in range(self.n_backup_steps // self.verify_every_x):
             idx = i * self.verify_every_x
             b[i], A[i] = self.cbf.lie_derivatives(
-                states[idx], times[idx], Qs[idx]
+                states[idx], Qs[idx], times[idx]
             )  # TODO: Fix why it shows error -> Do I use wrong terminology for super classes?
             b[i] += self.alpha_safety(self.cbf.safety_vf(states[idx], times[idx]))
 
-        b[-2], A[-2] = self.cbf.lie_derivatives(states[-1], times[-1], Qs[-1])
+        b[-2], A[-2] = self.cbf.lie_derivatives(states[-1], Qs[-1], times[-1])
         b[-2] += self.alpha_backup(self.cbf.safety_vf(states[-1], times[-1]))
         b[-1], A[-1] = self.cbf.lie_derivatives(
-            states[-1], times[-1], Qs[-1], backup_set=True
-        )  # TODO: Discuss with Yuxiao if there is an additional term for the nonbackup set
+            states[-1], Qs[-1], times[-1], backup_set=True
+        )  # TODO: Discuss with Yuxiao if there is an additional term for the nonbackup set -> YES TO IMPLEMENT
         b[-1] += self.alpha_backup(self.cbf.backup_vf(states[-1], times[-1]))
 
         self.A.value = A

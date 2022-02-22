@@ -115,7 +115,7 @@ class ControlAffineImplicitCBF(ImplicitCBF):
     def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
         super().__init__(dynamics, params, **kwargs)
 
-    def lie_derivatives(self, state: np.ndarray, time: float = 0., sensitivity: np.ndarray, backup_set: bool=False) -> Tuple[np.ndarray, np.ndarray]:
+    def lie_derivatives(self, state: np.ndarray, sensitivity: np.ndarray, time: float = 0.,  backup_set: bool=False) -> Tuple[np.ndarray, np.ndarray]:
         """
         :param state: state
         :param control: control
