@@ -1,4 +1,5 @@
 import abc
+from typing import Tuple
 import numpy as np
 from cbf_opt import dynamics as dynamics_f
 
@@ -8,7 +9,7 @@ class CBF(metaclass=abc.ABCMeta):
         self.dynamics = dynamics
         assert isinstance(self.dynamics, dynamics_f.Dynamics)
 
-    def is_safe(self, state, time) -> float:
+    def is_safe(self, state: np.ndarray, time: float = 0.) -> bool:
         """
         :param state: state
         :param time: time
@@ -19,20 +20,20 @@ class CBF(metaclass=abc.ABCMeta):
         )  # TODO: This is safe with respect to CBF, not with respect to obstacle (more safety from obstacle)
 
     @abc.abstractmethod
-    def vf(self, state: np.ndarray, time: float) -> float:
+    def vf(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the value function h(x)"""
 
-    def vf_dt(self, state, control, time):
+    def vf_dt(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> float:
         return self.vf_dt_partial(state, time) + self._grad_vf(state, time) @ self.dynamics(
             state, control, time
         )
 
-    def vf_dt_partial(self, state, time):
+    def vf_dt_partial(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the partial derivative of the time derivative of the value function h(x)"""
         return 0.0
 
     @abc.abstractmethod
-    def _grad_vf(self, state, time):
+    def _grad_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the gradient of the value function h(x)"""
 
 
@@ -41,7 +42,9 @@ class ControlAffineCBF(CBF):
         super().__init__(dynamics, params, **kwargs)
         assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
 
-    def lie_derivatives(self, state, time):
+    def lie_derivatives(
+        self, state: np.ndarray, time: float = 0.0
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         :param state: state
         :param control: control
@@ -57,11 +60,11 @@ class ControlAffineCBF(CBF):
 
 
 class ImplicitCBF(CBF):
-    def __init__(self, dynamics: dynamics_f.Dynamics, params, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, params: dict, **kwargs) -> None:
         self.dynamics = dynamics
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
 
-    def vf(self, x0, t0: float = 0.0, break_unsafe: bool = True):
+    def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = True) -> float:
         # This is only used for the "hacky" version
         assert isinstance(self.backup_controller, BackupController)
         ts = np.arange(0, self.backup_controller.T_backup, self.dynamics.dt) + t0
@@ -87,7 +90,7 @@ class ImplicitCBF(CBF):
         raise NotImplementedError("Vf is not differentiable")
 
     @abc.abstractmethod
-    def backup_vf(self, state, time):
+    def backup_vf(self, state: np.ndarray, time: float = 0.0) -> float:
         """
         Implements the value function of the backup set h(x)
         """
@@ -95,15 +98,15 @@ class ImplicitCBF(CBF):
     # FIXME: How to define vf_dt_partial for Implicit CBFs? Is there any work on this?
 
     @abc.abstractmethod
-    def _grad_backup_vf(self, state, time):
+    def _grad_backup_vf(self, state: np.ndarray, time: float = 0.) -> np.ndarray:
         """Implements the gradient of the value function of the backup set h(x)"""
 
     @abc.abstractmethod
-    def safety_vf(self, state, time) -> float:
+    def safety_vf(self, state: np.ndarray, time: float = 0.) -> float:
         """Implements the value function h(x) defining the safety set (can have multiple)"""
 
     @abc.abstractmethod
-    def _grad_safety_vf(self, state, time):
+    def _grad_safety_vf(self, state: np.ndarray, time: float = 0.) -> np.ndarray:
         """Implements the gradient of the value function of the safety set h(x)"""
 
 
@@ -112,7 +115,7 @@ class ControlAffineImplicitCBF(ImplicitCBF):
     def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
         super().__init__(dynamics, params, **kwargs)
 
-    def lie_derivatives(self, state, time, sensitivity, backup_set=False):
+    def lie_derivatives(self, state: np.ndarray, time: float = 0., sensitivity: np.ndarray, backup_set: bool=False) -> Tuple[np.ndarray, np.ndarray]:
         """
         :param state: state
         :param control: control
@@ -135,21 +138,21 @@ class ControlAffineImplicitCBF(ImplicitCBF):
 
 # TOTEST
 class BackupController:
-    def __init__(self, dynamics, T_backup, **kwargs):
+    def __init__(self, dynamics: dynamics_f.Dynamics, T_backup: float, **kwargs):
         self.dynamics = dynamics
         self.T_backup = T_backup
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
 
     @abc.abstractmethod
-    def policy(self, x, t):
+    def policy(self, x: np.ndarray, t: float = 0.0) -> np.ndarray:
         """Implements the backup policy pi_0(x) -> Handderived"""
 
     @abc.abstractmethod
-    def grad_policy(self, x, t):
+    def grad_policy(self, x: np.ndarray, t: float = 0.0) -> np.ndarray:
         """Implements the gradient of the backup policy pi_0(x) -> Handderived"""
 
-    def grad_f_cl(self, x, t):
+    def grad_f_cl(self, x: np.ndarray, t: float = 0.0) -> np.ndarray:
         """Implements the gradient of the closed loop dynamics under the
         backup policy pi_0(x) -> Analytic expression"""
         action = self.policy(x, t)
@@ -157,7 +160,7 @@ class BackupController:
         B = self.dynamics.control_matrix(x, action, t)
         return A + B @ self.grad_policy(x, t)
 
-    def rollout_backup(self, x0, t0=0.0):
+    def rollout_backup(self, x0: np.ndarray, t0: float = 0.0) -> Tuple[np.ndarray, np.ndarray]:
         # TODO: Verify shapes +1 or +2
         ts = np.arange(0, self.T_backup, self.dynamics.dt) + t0
         xs = np.zeros((ts.shape[0] + 1, self.dynamics.n_dims))
@@ -169,7 +172,9 @@ class BackupController:
 
         return xs, ts
 
-    def rollout_backup_w_sensitivity_matrix(self, x0, t0=0.0):
+    def rollout_backup_w_sensitivity_matrix(
+        self, x0: np.ndarray, t0: float = 0.0
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # TODO: Verify shapes +1 or +2
         xs, ts = self.rollout_backup(x0, t0)
         Qs = np.zeros((ts.shape[0] + 1, self.dynamics.n_dims, self.dynamics.n_dims))
@@ -179,6 +184,6 @@ class BackupController:
             Qs[i + 1] = Qs[i] + dQdt * self.dynamics.dt
         return xs, Qs, ts
 
-    def sensitivity_dt(self, Q, state, time):
+    def sensitivity_dt(self, Q: np.ndarray, state: np.ndarray, time: float) -> np.ndarray:
         """ode presenting sensitivity matrix dQ_dt = Df_cl(\phi_t^u(x_0)) * Q(t)"""
         return self.grad_f_cl(state, time) @ Q

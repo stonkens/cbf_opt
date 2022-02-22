@@ -6,20 +6,22 @@ from cbf_opt import cbf as cbf_f
 
 
 class ASIF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics, cbf, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, cbf: cbf_f.CBF, **kwargs) -> None:
         self.dynamics = dynamics
         self.cbf = cbf
         self.alpha = kwargs.get("alpha", lambda x: x)
         self.verbose = kwargs.get("verbose", False)
         self.solver = kwargs.get("solver", "OSQP")
         self.nominal_policy = kwargs.get(
-            "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dim)
+            "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims)
         )
         assert isinstance(self.dynamics, dynamics_f.Dynamics)
         assert isinstance(self.cbf, cbf_f.CBF)
 
     @abc.abstractmethod
-    def __call__(self, state, nominal_control, time):
+    def __call__(
+        self, state: np.ndarray, nominal_control: np.ndarray, time: float = 0.0
+    ) -> np.ndarray:
         """Implements the active safety invariance filter"""
 
 
@@ -52,7 +54,7 @@ class ControlAffineASIF(ASIF):
     def setup_optimization_problem(self):
         self.QP = cp.Problem(self.obj, self.constraints)
 
-    def set_constraint(self, Lf_h, Lg_h, h):
+    def set_constraint(self, Lf_h: np.ndarray, Lg_h: np.ndarray, h: float):
         self.b.value = self.alpha(h) + Lf_h
         self.A.value = Lg_h
 
@@ -65,7 +67,9 @@ class ControlAffineASIF(ASIF):
         self.set_constraint(Lf_h, Lg_h, h)
 
         if nominal_control is not None:
-            assert nominal_control.shape == (self.dynamics.control_dims,)
+            assert isinstance(nominal_control, np.ndarray) and nominal_control.shape == (
+                self.dynamics.control_dims,
+            )
             self.nominal_control.value = nominal_control
         else:
             self.nominal_control.value = self.nominal_policy(state, time)
@@ -117,14 +121,18 @@ class ImplicitASIF(metaclass=abc.ABCMeta):
         # assert isinstance(self.cbf, cbf.ImplicitCBF)
 
     @abc.abstractmethod
-    def __call__(self, state, nominal_control=None, time=0.0):
+    def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0) -> np.ndarray:
         """Implements the active safety invariance filter"""
 
 
 # TO TEST
 class ImplicitControlAffineASIF(ImplicitASIF):
     def __init__(
-        self, dynamics, cbf: cbf_f.ControlAffineImplicitCBF, backup_controller, **kwargs
+        self,
+        dynamics: dynamics_f.ControlAffineDynamics,
+        cbf: cbf_f.ControlAffineImplicitCBF,
+        backup_controller: cbf_f.BackupController,
+        **kwargs
     ) -> None:
         super().__init__(dynamics, cbf, backup_controller, **kwargs)
 
@@ -145,7 +153,7 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         # TODO: Add umin and umax
         self.QP = cp.Problem(self.obj, self.constraints)
 
-    def __call__(self, state, nominal_control=None, time=0):
+    def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0) -> np.ndarray:
         # grad_safety = self.cbf._grad_safety_vf(state, time)  # TODO: change to not have _grad_vf
         # grad_backup = self.cbf._grad_backup_vf(state, time)  # TODO: change to not have _grad_vf
         states, Qs, times = self.backup_controller.rollout_backup_w_sensitivity_matrix(state, time)
@@ -170,7 +178,9 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         self.b.value = b
 
         if nominal_control is not None:
-            assert nominal_control.shape == (self.dynamics.control_dims,)
+            assert isinstance(nominal_control, np.ndarray) and nominal_control.shape == (
+                self.dynamics.control_dims,
+            )
             self.nominal_control.value = nominal_control
         else:
             self.nominal_control.value = self.nominal_policy(state, time)
@@ -184,7 +194,11 @@ class ImplicitControlAffineASIF(ImplicitASIF):
 # TOTEST
 class TradeoffFilter(ImplicitASIF):
     def __init__(
-        self, dynamics, cbf: cbf_f.ImplicitCBF, backup_controller: cbf_f.BackupController, **kwargs
+        self,
+        dynamics: dynamics_f.Dynamics,
+        cbf: cbf_f.ImplicitCBF,
+        backup_controller: cbf_f.BackupController,
+        **kwargs
     ):
         super().__init__(dynamics, cbf, backup_controller, **kwargs)
         self.beta = kwargs.get("beta", 10)
@@ -192,14 +206,16 @@ class TradeoffFilter(ImplicitASIF):
             "decay_func", lambda x, t, h: 1 - np.exp(-self.beta * np.maximum(h, 0))
         )
 
-    def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0):
+    def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0) -> np.ndarray:
         assert self.decay_func is not None, "Decay function must be specified"
         h_curr = self.cbf.vf(state, time)
         # print(h_curr)
         filter_rate = self.decay_func(state, time, h_curr)
 
         if nominal_control is not None:
-            assert nominal_control.shape == (self.dynamics.control_dims,)
+            assert isinstance(nominal_control, np.ndarray) and nominal_control.shape == (
+                self.dynamics.control_dims,
+            )
         else:
             nominal_control = self.nominal_policy(state, time)
 
@@ -212,7 +228,7 @@ class TradeoffFilter(ImplicitASIF):
 # TOTEST
 # FIXME: Not for this code base
 class GeneralizedASIF(ASIF):
-    def __init__(self, dynamics, cbf, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, cbf: cbf_f.CBF, **kwargs) -> None:
         super().__init__(dynamics, cbf, **kwargs)
         self.beta0 = kwargs.get("beta0", 0.0)
         self.penalty_coeff = kwargs.get("penalty_coeff", 1.0)
@@ -221,11 +237,13 @@ class GeneralizedASIF(ASIF):
 # TOTEST
 # FIXME: Not for this code base
 class GeneralizedControlAffineASIF(GeneralizedASIF, ControlAffineASIF):
-    def __init__(self, dynamics, cbf, **kwargs) -> None:
+    def __init__(
+        self, dynamics: dynamics_f.ControlAffineDynamics, cbf: cbf_f.ControlAffineCBF, **kwargs
+    ) -> None:
         super().__init__(dynamics, cbf, **kwargs)
         self.beta = cp.Variable(1)
         self.obj += cp.Minimize(self.penalty_coeff * (self.beta - self.beta0) ** 2)
         self.constraints[0] = self.A @ self.filtered_control + self.b >= self.beta
 
-    def get_beta(self):
+    def get_beta(self) -> float:
         return self.beta.value
