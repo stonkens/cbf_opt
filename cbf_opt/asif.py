@@ -44,11 +44,15 @@ class ControlAffineASIF(ASIF):
         min || u - u_des ||^2
         s.t. A @ u + b >= 0
         """
-        self.obj = cp.Minimize(cp.norm(self.filtered_control - self.nominal_control, 2) ** 2)
+        self.obj = cp.Minimize(
+            cp.quad_form(
+                self.filtered_control - self.nominal_control, np.eye(self.dynamics.control_dims)
+            )
+        )
         self.constraints = [self.A @ self.filtered_control + self.b >= 0]
-        if self.umin:
+        if self.umin is not None:
             self.constraints.append(self.filtered_control >= self.umin)
-        if self.umax:
+        if self.umax is not None:
             self.constraints.append(self.filtered_control <= self.umax)
 
     def setup_optimization_problem(self):
@@ -65,14 +69,15 @@ class ControlAffineASIF(ASIF):
         h = self.cbf.vf(state, time)
         Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)
         self.set_constraint(Lf_h, Lg_h, h)
-
+        if time >= 3.0:
+            temp = 1
         if nominal_control is not None:
             assert isinstance(nominal_control, np.ndarray) and nominal_control.shape == (
                 self.dynamics.control_dims,
             )
             self.nominal_control.value = nominal_control
         else:
-            self.nominal_control.value = self.nominal_policy(state, time)
+            self.nominal_control.value = np.array(self.nominal_policy(state, time))
         try:
             self.QP.solve(solver=self.solver, verbose=self.verbose)
         except cp.SolverError:
@@ -82,15 +87,14 @@ class ControlAffineASIF(ASIF):
             if (self.umin is None) and (self.umax is None):
                 return np.atleast_1d(self.nominal_control.value)
             else:
-                if self.umin and self.umax:
+                if self.umin is not None and self.umax is not None:
                     # TODO: This should depend on "controlMode"
-                    return np.atleast_1d(
-                        np.int64(Lg_h >= 0) @ np.atleast_1d(self.umax)
-                        + np.int64(Lg_h < 0) @ np.atleast_1d(self.umin)
-                    )
-                elif (Lg_h >= 0).all() and self.umax:
+                    return np.int64(Lg_h >= 0) * np.atleast_1d(self.umax) + np.int64(
+                        Lg_h < 0
+                    ) * np.atleast_1d(self.umin)
+                elif (Lg_h >= 0).all() and self.umax is not None:
                     return np.atleast_1d(self.umax)
-                elif (Lg_h <= 0).all() and self.umin:
+                elif (Lg_h <= 0).all() and self.umin is not None:
                     return np.atleast_1d(self.umin)
                 else:
                     return np.atleast_1d(self.nominal_control.value)

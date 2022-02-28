@@ -23,6 +23,18 @@ class Dynamics(metaclass=abc.ABCMeta):
     ) -> np.ndarray:
         raise NotImplementedError("Define control_jacobian in subclass")
 
+    def linearized_ct_dynamics(self, state: np.ndarray, control: np.ndarray, time: float = 0.0):
+        return self.state_jacobian(state, control, time), self.control_jacobian(
+            state, control, time
+        )
+
+    def linearized_dt_dynamics(self, state: np.ndarray, control: np.ndarray, time: float = 0.0):
+        """Implements the linearized discrete-time dynamics"""
+        A, B = self.linearized_ct_dynamics(state, control, time)
+        A_d = np.eye(self.n_dims) + self.dt * A
+        B_d = self.dt * B
+        return A_d, B_d
+
     def step(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the discrete-time dynamics ODE"""
         # TODO: Add compatibility with more complicated interpolation schemes
