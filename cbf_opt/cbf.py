@@ -9,7 +9,7 @@ class CBF(metaclass=abc.ABCMeta):
         self.dynamics = dynamics
         assert isinstance(self.dynamics, dynamics_f.Dynamics)
 
-    def is_safe(self, state: np.ndarray, time: float = 0.) -> bool:
+    def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
         """
         :param state: state
         :param time: time
@@ -59,14 +59,32 @@ class ControlAffineCBF(CBF):
         return Lf, Lg
 
 
+class ExponentialControlAffineCBF(ControlAffineCBF):
+    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
+        super().__init__(dynamics, params, **kwargs)
+        self.Lf = kwargs.get("Lf", None)
+        self.Lf2 = kwargs.get("Lf2", None)
+        self.LgLf = kwargs.get("LgLf", None)
+        self.alpha2 = kwargs.get("alpha2", None)
+
+        assert isinstance(self.dynamics, dynamics_f.ExponentialControlAffineDynamics)
+
+    def lie_derivatives(
+        self, state: np.ndarray, time: float = 0.0
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        Lf = np.atleast_1d(self.Lf(state, time) + self.alpha2 * self.Lf2(state, time))
+        Lg = np.atleast_2d(self.LgLf(state, time))
+        return Lf, Lg
+
+
 class ImplicitCBF(CBF):
     def __init__(self, dynamics: dynamics_f.Dynamics, params: dict, **kwargs) -> None:
         self.dynamics = dynamics
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
 
-    def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = True) -> float:
+    def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = False) -> float:
         # This is only used for the "hacky" version
-        assert isinstance(self.backup_controller, BackupController)
+        # assert isinstance(self.backup_controller, BackupController)
         ts = np.arange(0, self.backup_controller.T_backup, self.dynamics.dt) + t0
 
         hs = np.zeros((ts.shape[0] + 2))
@@ -98,15 +116,15 @@ class ImplicitCBF(CBF):
     # FIXME: How to define vf_dt_partial for Implicit CBFs? Is there any work on this?
 
     @abc.abstractmethod
-    def _grad_backup_vf(self, state: np.ndarray, time: float = 0.) -> np.ndarray:
+    def _grad_backup_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the gradient of the value function of the backup set h(x)"""
 
     @abc.abstractmethod
-    def safety_vf(self, state: np.ndarray, time: float = 0.) -> float:
+    def safety_vf(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the value function h(x) defining the safety set (can have multiple)"""
 
     @abc.abstractmethod
-    def _grad_safety_vf(self, state: np.ndarray, time: float = 0.) -> np.ndarray:
+    def _grad_safety_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the gradient of the value function of the safety set h(x)"""
 
 
@@ -115,7 +133,13 @@ class ControlAffineImplicitCBF(ImplicitCBF):
     def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
         super().__init__(dynamics, params, **kwargs)
 
-    def lie_derivatives(self, state: np.ndarray, sensitivity: np.ndarray, time: float = 0.,  backup_set: bool=False) -> Tuple[np.ndarray, np.ndarray]:
+    def lie_derivatives(
+        self,
+        state: np.ndarray,
+        sensitivity: np.ndarray,
+        time: float = 0.0,
+        backup_set: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         :param state: state
         :param control: control
@@ -178,7 +202,7 @@ class BackupController:
         # TODO: Verify shapes +1 or +2
         xs, ts = self.rollout_backup(x0, t0)
         Qs = np.zeros((ts.shape[0] + 1, self.dynamics.n_dims, self.dynamics.n_dims))
-        Qs[0] = np.eye(self.dynamics.state_dim)
+        Qs[0] = np.eye(self.dynamics.n_dims)
         for i, t in enumerate(ts):
             dQdt = self.sensitivity_dt(Qs[i], xs[i], t)
             Qs[i + 1] = Qs[i] + dQdt * self.dynamics.dt
