@@ -14,10 +14,7 @@ The toolbox is compatible with batched inputs (`torch` or `tf`) and individual i
 - `cvxpy`
 
 ## TODOs
-Testing CBF:
-- Create a mock system which you can test some functionality on
-    - V, gradV and V at next point to test delta_V (V + dx * gradV) vs (V_next - V)
-    - Test Lie Derivatives: Compute V_dot with Lf_V and Lg_V and compare with tiny forward simulation
+Current pipeline does not allow for batched inputs, figure out how to allow both Python and Torch tensors
 DataModule:
 - Assert sizes are right 
 Experiments:
