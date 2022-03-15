@@ -3,6 +3,7 @@ import cvxpy as cp
 import numpy as np
 from cbf_opt import dynamics as dynamics_f
 from cbf_opt import cbf as cbf_f
+import logging
 
 
 class ASIF(metaclass=abc.ABCMeta):
@@ -15,8 +16,6 @@ class ASIF(metaclass=abc.ABCMeta):
         self.nominal_policy = kwargs.get(
             "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims)
         )
-        assert isinstance(self.dynamics, dynamics_f.Dynamics)
-        assert isinstance(self.cbf, cbf_f.CBF)
 
     @abc.abstractmethod
     def __call__(
@@ -30,16 +29,16 @@ class ControlAffineASIF(ASIF):
         self, dynamics: dynamics_f.ControlAffineDynamics, cbf: cbf_f.ControlAffineCBF, **kwargs
     ) -> None:
         super().__init__(dynamics, cbf, **kwargs)
-
-        assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
-        assert isinstance(self.cbf, cbf_f.ControlAffineCBF)
-
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control = cp.Parameter(self.dynamics.control_dims)
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
         self.b = cp.Parameter(1)
         self.A = cp.Parameter((1, self.dynamics.control_dims))
+
+        self.opt_sol = np.zeros(self.filtered_control.shape)
+
+    def setup_optimization_problem(self):
         """
         min || u - u_des ||^2
         s.t. A @ u + b >= 0
@@ -54,53 +53,69 @@ class ControlAffineASIF(ASIF):
             self.constraints.append(self.filtered_control >= self.umin)
         if self.umax is not None:
             self.constraints.append(self.filtered_control <= self.umax)
-
-    def setup_optimization_problem(self):
         self.QP = cp.Problem(self.obj, self.constraints)
+        assert self.QP.is_qp(), "This is not a quadratic program"
 
     def set_constraint(self, Lf_h: np.ndarray, Lg_h: np.ndarray, h: float):
         self.b.value = self.alpha(h) + Lf_h
         self.A.value = Lg_h
 
     def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0) -> np.ndarray:
-        solver_failure = False
         if not hasattr(self, "QP"):
             self.setup_optimization_problem()
         h = self.cbf.vf(state, time)
-        Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)
+        Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)  # TODO: Shouldn't Lf_h be a float?
         self.set_constraint(Lf_h, Lg_h, h)
-        if time >= 3.0:
-            temp = 1
+
         if nominal_control is not None:
             assert isinstance(nominal_control, np.ndarray) and nominal_control.shape == (
                 self.dynamics.control_dims,
             )
             self.nominal_control.value = nominal_control
         else:
-            self.nominal_control.value = np.array(self.nominal_policy(state, time))
+            self.nominal_control.value = self.nominal_policy(state, time)
+
+        self._solve_problem()
+
+        return np.atleast_1d(self.opt_sol)
+
+    def _solve_problem(self) -> np.ndarray:
+        """Lower level function to solve the optimization problem"""
+        solver_failure = False
         try:
             self.QP.solve(solver=self.solver, verbose=self.verbose)
+            self.opt_sol = self.filtered_control.value
         except cp.SolverError:
             solver_failure = True
         if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
-            # TODO: Add logging / printing
+            logging.warning("QP solver failed")
             if (self.umin is None) and (self.umax is None):
-                return np.atleast_1d(self.nominal_control.value)
+                logging.warning("Returning nominal control value")
+                self.opt_sol = self.nominal_control.value
             else:
                 if self.umin is not None and self.umax is not None:
                     # TODO: This should depend on "controlMode"
-                    return np.int64(Lg_h >= 0) * np.atleast_1d(self.umax) + np.int64(
-                        Lg_h < 0
-                    ) * np.atleast_1d(self.umin)
-                elif (Lg_h >= 0).all() and self.umax is not None:
-                    return np.atleast_1d(self.umax)
-                elif (Lg_h <= 0).all() and self.umin is not None:
-                    return np.atleast_1d(self.umin)
+                    logging.warning("G")
+                    self.opt_sol = (
+                        np.int64(self.A.value >= 0) * self.umax
+                        + np.int64(self.A.value < 0) * self.umin
+                    )
+                elif (self.A.value >= 0).all() and self.umax is not None:
+                    self.opt_sol = self.umax
+                elif (self.A.value <= 0).all() and self.umin is not None:
+                    self.opt_sol = self.umin
                 else:
-                    return np.atleast_1d(self.nominal_control.value)
-
-        # TODO: Relax solution if not solved with large penalty on constraints
-        return np.atleast_1d(self.filtered_control.value)
+                    self.opt_sol = self.nominal_control.value
+                # elif self.umax is not None:
+                #     self.opt_sol = (
+                #         np.int64(self.A.value >= 0) * self.umax
+                #         + np.int64(self.A.value < 0) * self.nominal_control.value
+                #     )
+                # elif self.umin is not None:
+                #     self.opt_sol = (
+                #         np.int64(self.A.value >= 0) * self.nominal_control.value
+                #         + np.int64(self.A.value < 0) * self.umin
+                #     )
 
 
 class ImplicitASIF(metaclass=abc.ABCMeta):

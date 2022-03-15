@@ -1,5 +1,6 @@
 import abc
 import numpy as np
+from typing import Tuple
 
 
 class Dynamics(metaclass=abc.ABCMeta):
@@ -11,7 +12,7 @@ class Dynamics(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
-        """Implements the continuous-time dynamics ODE"""
+        """Implements the continuous-time dynamics ODE \dot{x} = f(x, u, t)"""
 
     def state_jacobian(
         self, state: np.ndarray, control: np.ndarray, time: float = 0.0
@@ -23,7 +24,10 @@ class Dynamics(metaclass=abc.ABCMeta):
     ) -> np.ndarray:
         raise NotImplementedError("Define control_jacobian in subclass")
 
-    def linearized_ct_dynamics(self, state: np.ndarray, control: np.ndarray, time: float = 0.0):
+    def linearized_ct_dynamics(
+        self, state: np.ndarray, control: np.ndarray, time: float = 0.0
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Computes the linearized state and control matrices, A and B, of the continuous-time dynamics"""
         return self.state_jacobian(state, control, time), self.control_jacobian(
             state, control, time
         )
@@ -35,17 +39,32 @@ class Dynamics(metaclass=abc.ABCMeta):
         B_d = self.dt * B
         return A_d, B_d
 
-    def step(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
-        """Implements the discrete-time dynamics ODE"""
-        # TODO: Add compatibility with more complicated interpolation schemes
-        return state + self(state, control, time) * self.dt
+    def step(
+        self, state: np.ndarray, control: np.ndarray, time: float = 0.0, scheme: str = "fe"
+    ) -> np.ndarray:
+        """Implements the discrete-time dynamics ODE
+        scheme in {fe, rk4}"""
+        if scheme == "fe":
+            return state + self(state, control, time) * self.dt
+        elif scheme == "rk4":
+            # Assumes zoh on control
+            k1 = self(state, control, time)
+            k2 = self(state + k1 * self.dt / 2, control, time + self.dt / 2)
+            k3 = self(state + k2 * self.dt / 2, control, time + self.dt / 2)
+            k4 = self(state + k3 * self.dt, control, time + self.dt)
+            return state + (k1 + 2 * k2 + 2 * k3 + k4) * self.dt / 6
+        else:
+            raise ValueError("scheme must be either 'fe' or 'rk4'")
+
+    # TODO: Add angle normalization after computing dynamics (think carefully where to add!)
 
 
 class ControlAffineDynamics(Dynamics):
     def __init__(self, params: dict, **kwargs):
         super().__init__(params, **kwargs)
-        assert self.open_loop_dynamics(np.random.rand(self.n_dims)).shape[0] == self.n_dims
-        assert self.control_matrix(np.random.rand(self.n_dims)).shape == (
+        # Move the below to a testing class and and that it can be for the last two shapes
+        assert self.open_loop_dynamics(np.random.rand(self.n_dims)).shape[-1] == self.n_dims
+        assert self.control_matrix(np.random.rand(self.n_dims)).shape[-2:] == (
             self.n_dims,
             self.control_dims,
         )
@@ -61,6 +80,7 @@ class ControlAffineDynamics(Dynamics):
     def control_jacobian(
         self, state: np.ndarray, control: np.ndarray, time: float = 0.0
     ) -> np.ndarray:
+        """For control affine systems the control_jacobian is equivalent to the control matrix"""
         return self.control_matrix(state, time)
 
     @abc.abstractmethod
@@ -68,4 +88,5 @@ class ControlAffineDynamics(Dynamics):
         """Implements the control Jacobian g(x,u) f(x,u,t)"""
 
     def disturbance_jacobian(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
+        # TODO: Is this required?
         return np.atleast_2d(np.zeros((self.n_dims, self.disturbance_dims)))

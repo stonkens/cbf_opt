@@ -10,31 +10,31 @@ class CBF(metaclass=abc.ABCMeta):
         assert isinstance(self.dynamics, dynamics_f.Dynamics)
 
     def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
-        """
-        :param state: state
-        :param time: time
-        :return: is safe
-        """
-        return (
-            self.vf(state, time) >= 0
-        )  # TODO: This is safe with respect to CBF, not with respect to obstacle (more safety from obstacle)
+        """Evaluates h(x, t) >= 0"""
+        return self.vf(state, time) >= 0
+
+    def is_unsafe(self, state: np.ndarray, time: float = 0.0) -> bool:
+        """Evaluates h(x, t) < 0"""
+        return self.vf(state, time) < 0
 
     @abc.abstractmethod
     def vf(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the value function h(x)"""
 
-    def vf_dt(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> float:
-        return self.vf_dt_partial(state, time) + self._grad_vf(state, time) @ self.dynamics(
-            state, control, time
-        )
-
-    def vf_dt_partial(self, state: np.ndarray, time: float = 0.0) -> float:
-        """Implements the partial derivative of the time derivative of the value function h(x)"""
-        return 0.0
-
     @abc.abstractmethod
     def _grad_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the gradient of the value function h(x)"""
+
+    def vf_dt_partial(self, state: np.ndarray, time: float = 0.0) -> float:
+        """Implements the partial derivative of the time derivative of the value function h(x)
+        In general, we consider time-invariant CBFs, hence defaults to 0."""
+        return 0.0
+
+    def vf_dt(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> float:
+        """Implements the time derivative of the value function h(x)"""
+        return self.vf_dt_partial(state, time) + self._grad_vf(state, time) @ self.dynamics(
+            state, control, time
+        )
 
 
 class ControlAffineCBF(CBF):
@@ -46,10 +46,8 @@ class ControlAffineCBF(CBF):
         self, state: np.ndarray, time: float = 0.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        :param state: state
-        :param control: control
-        :param time: time
-        :return: L_{f(x)} V, L_{g(x)}
+        Computes the Lie derivatives of the dynamics at (state, time)
+        :return: L_{f(x)} h, L_{g(x)} h with h the value function vf
         """
         grad_vf = self._grad_vf(state, time)
         f = self.dynamics.open_loop_dynamics(state, time)
@@ -61,13 +59,14 @@ class ControlAffineCBF(CBF):
 
 class ExponentialControlAffineCBF(ControlAffineCBF):
     def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
+        """Only covers degree 2 Exponential CBF, i.e. Lg Lf \neq 0"""
         super().__init__(dynamics, params, **kwargs)
         self.Lf = kwargs.get("Lf", None)
         self.Lf2 = kwargs.get("Lf2", None)
         self.LgLf = kwargs.get("LgLf", None)
         self.alpha2 = kwargs.get("alpha2", None)
 
-        assert isinstance(self.dynamics, dynamics_f.ExponentialControlAffineDynamics)
+        assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
 
     def lie_derivatives(
         self, state: np.ndarray, time: float = 0.0
@@ -83,7 +82,7 @@ class ImplicitCBF(CBF):
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
 
     def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = False) -> float:
-        # This is only used for the "hacky" version
+        # This is only used for the "hacky" version --> Is it?
         # assert isinstance(self.backup_controller, BackupController)
         ts = np.arange(0, self.backup_controller.T_backup, self.dynamics.dt) + t0
 
