@@ -5,9 +5,8 @@ from cbf_opt import dynamics as dynamics_f
 
 
 class CBF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics: dynamics_f.Dynamics, params: dict, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, **kwargs) -> None:
         self.dynamics = dynamics
-        assert isinstance(self.dynamics, dynamics_f.Dynamics)
 
     def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
         """Evaluates h(x, t) >= 0"""
@@ -38,10 +37,6 @@ class CBF(metaclass=abc.ABCMeta):
 
 
 class ControlAffineCBF(CBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
-        super().__init__(dynamics, params, **kwargs)
-        assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
-
     def lie_derivatives(
         self, state: np.ndarray, time: float = 0.0
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -58,9 +53,9 @@ class ControlAffineCBF(CBF):
 
 
 class ExponentialControlAffineCBF(ControlAffineCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, **kwargs) -> None:
         """Only covers degree 2 Exponential CBF, i.e. Lg Lf \neq 0"""
-        super().__init__(dynamics, params, **kwargs)
+        super().__init__(dynamics, **kwargs)
         self.Lf = kwargs.get("Lf", None)
         self.Lf2 = kwargs.get("Lf2", None)
         self.LgLf = kwargs.get("LgLf", None)
@@ -77,7 +72,7 @@ class ExponentialControlAffineCBF(ControlAffineCBF):
 
 
 class ImplicitCBF(CBF):
-    def __init__(self, dynamics: dynamics_f.Dynamics, params: dict, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, **kwargs) -> None:
         self.dynamics = dynamics
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
 
@@ -129,8 +124,8 @@ class ImplicitCBF(CBF):
 
 # TOTEST
 class ControlAffineImplicitCBF(ImplicitCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
-        super().__init__(dynamics, params, **kwargs)
+    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, **kwargs):
+        super().__init__(dynamics, **kwargs)
 
     def lie_derivatives(
         self,
@@ -140,9 +135,6 @@ class ControlAffineImplicitCBF(ImplicitCBF):
         backup_set: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        :param state: state
-        :param control: control
-        :param time: time
         :return: L_{f(x)} V, L_{g(x)}
         """
         if backup_set:

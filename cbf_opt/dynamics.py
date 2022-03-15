@@ -60,15 +60,6 @@ class Dynamics(metaclass=abc.ABCMeta):
 
 
 class ControlAffineDynamics(Dynamics):
-    def __init__(self, params: dict, **kwargs):
-        super().__init__(params, **kwargs)
-        # Move the below to a testing class and and that it can be for the last two shapes
-        assert self.open_loop_dynamics(np.random.rand(self.n_dims)).shape[-1] == self.n_dims
-        assert self.control_matrix(np.random.rand(self.n_dims)).shape[-2:] == (
-            self.n_dims,
-            self.control_dims,
-        )
-
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the continuous-time dynamics ODE: dx_dt = f(x, t) + g(x, t) @ u"""
         return self.open_loop_dynamics(state, time) + self.control_matrix(state, time) @ control

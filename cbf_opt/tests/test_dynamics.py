@@ -46,5 +46,8 @@ def test_control_affine_dynamics(dyn_inst):
     assert isinstance(dyn_inst, ControlAffineDynamics)
     state = np.random.rand(dyn_inst.n_dims)
     time = np.random.rand()
-    assert dyn_inst.control_matrix(state, time).shape == (dyn_inst.n_dims, dyn_inst.control_dims)
-    assert dyn_inst.open_loop_dynamics(state, time).shape == (dyn_inst.n_dims,)
+    assert dyn_inst.open_loop_dynamics(state, time).shape[-1] == (dyn_inst.n_dims,)
+    assert dyn_inst.control_matrix(state, time).shape[-2:] == (
+        dyn_inst.n_dims,
+        dyn_inst.control_dims,
+    )

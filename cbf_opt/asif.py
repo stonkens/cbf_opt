@@ -136,9 +136,6 @@ class ImplicitASIF(metaclass=abc.ABCMeta):
         self.alpha_safety = kwargs.get("alpha_safety", lambda x: x)
         self.nominal_policy = kwargs.get("nominal_policy", lambda x, t: 0)
 
-        # assert isinstance(self.dynamics, dynamics.Dynamics)
-        # assert isinstance(self.cbf, cbf.ImplicitCBF)
-
     @abc.abstractmethod
     def __call__(self, state: np.ndarray, nominal_control=None, time: float = 0.0) -> np.ndarray:
         """Implements the active safety invariance filter"""
