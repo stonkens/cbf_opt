@@ -14,10 +14,10 @@ def test_asif(asif_inst):
     assert isinstance(asif_inst.alpha(np.random.rand()), float)
     x = np.random.rand(asif_inst.dynamics.n_dims)
     t = np.random.rand()
-    nom_pol = asif_inst.nominal_policy(x, t)
-    assert isinstance(nom_pol, np.ndarray)
-    # assert nom_pol.ndim == 1  # TODO: Is this test case necessary
-    assert nom_pol.shape == (asif_inst.dynamics.control_dims,)
+    if hasattr(asif_inst, "nominal_policy"):
+        nom_pol = asif_inst.nominal_policy(x, t)
+        assert isinstance(nom_pol, np.ndarray)
+        assert nom_pol.shape[-1] == asif_inst.dynamics.control_dims
 
 
 def test_control_affine_asif(asif_inst):

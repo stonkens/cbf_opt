@@ -1,9 +1,6 @@
 import numpy as np
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
 
-# TODO: Generic test for dynamics, without having to need to have a specific dynamics class
-# This should be linearized_ct_dynamics, linearizid_dt_dynamics, step
-
 
 def test_dynamics(dyn_inst):
     assert isinstance(dyn_inst, Dynamics)
@@ -46,7 +43,7 @@ def test_control_affine_dynamics(dyn_inst):
     assert isinstance(dyn_inst, ControlAffineDynamics)
     state = np.random.rand(dyn_inst.n_dims)
     time = np.random.rand()
-    assert dyn_inst.open_loop_dynamics(state, time).shape[-1] == (dyn_inst.n_dims,)
+    assert dyn_inst.open_loop_dynamics(state, time).shape[-1] == dyn_inst.n_dims
     assert dyn_inst.control_matrix(state, time).shape[-2:] == (
         dyn_inst.n_dims,
         dyn_inst.control_dims,
