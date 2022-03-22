@@ -5,7 +5,7 @@ from cbf_opt import dynamics as dynamics_f
 
 
 class CBF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics: dynamics_f.Dynamics, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, params, **kwargs) -> None:
         self.dynamics = dynamics
 
     def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
@@ -46,14 +46,18 @@ class ControlAffineCBF(CBF):
         """
         grad_vf = self._grad_vf(state, time)
         f = self.dynamics.open_loop_dynamics(state, time)
-        g = self.dynamics.control_jacobian(state, time)
-        Lf = np.atleast_1d(grad_vf @ f)
-        Lg = np.atleast_2d(grad_vf @ g)
+        g = self.dynamics.control_matrix(state, time)
+        try:
+            Lf = np.atleast_1d(grad_vf @ f)
+            Lg = np.atleast_2d(grad_vf @ g)
+        except ValueError:
+            Lf = np.einsum("ij,ij->i", grad_vf, f)
+            Lg = np.einsum("ij, ijk->ik", grad_vf, g)
         return Lf, Lg
 
 
 class ExponentialControlAffineCBF(ControlAffineCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
         """Only covers degree 2 Exponential CBF, i.e. Lg Lf \neq 0"""
         super().__init__(dynamics, **kwargs)
         self.Lf = kwargs.get("Lf", None)
@@ -72,7 +76,7 @@ class ExponentialControlAffineCBF(ControlAffineCBF):
 
 
 class ImplicitCBF(CBF):
-    def __init__(self, dynamics: dynamics_f.Dynamics, **kwargs) -> None:
+    def __init__(self, dynamics: dynamics_f.Dynamics, params, **kwargs) -> None:
         self.dynamics = dynamics
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
 
@@ -124,8 +128,8 @@ class ImplicitCBF(CBF):
 
 # TOTEST
 class ControlAffineImplicitCBF(ImplicitCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, **kwargs):
-        super().__init__(dynamics, **kwargs)
+    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
+        super().__init__(dynamics, params, **kwargs)
 
     def lie_derivatives(
         self,
