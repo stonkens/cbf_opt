@@ -14,4 +14,4 @@ from cbf_opt.asif import (
     TradeoffFilter,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
