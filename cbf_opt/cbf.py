@@ -1,12 +1,17 @@
 import abc
-from typing import Tuple
+from typing import Any, Tuple, Dict
 import numpy as np
-from cbf_opt import dynamics as dynamics_f
+from cbf_opt import Dynamics, ControlAffineDynamics
+from cbf_opt.tests import test_cbf
 
 
 class CBF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics: dynamics_f.Dynamics, params, **kwargs) -> None:
+    def __init__(
+        self, dynamics: Dynamics, params: Dict[str, Any], test: bool = True, **kwargs
+    ) -> None:
         self.dynamics = dynamics
+        if test:
+            test_cbf.test_cbf(self)
 
     def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
         """Evaluates h(x, t) >= 0"""
@@ -37,6 +42,13 @@ class CBF(metaclass=abc.ABCMeta):
 
 
 class ControlAffineCBF(CBF):
+    def __init__(
+        self, dynamics: ControlAffineDynamics, params: Dict[str, Any], test: bool = True, **kwargs
+    ) -> None:
+        super().__init__(dynamics, params, test, **kwargs)
+        if test:
+            test_cbf.test_control_affine_cbf(self)
+
     def lie_derivatives(
         self, state: np.ndarray, time: float = 0.0
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -57,15 +69,15 @@ class ControlAffineCBF(CBF):
 
 
 class ExponentialControlAffineCBF(ControlAffineCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs) -> None:
+    def __init__(
+        self, dynamics: ControlAffineDynamics, params: Dict[str, Any], test: bool = True, **kwargs
+    ) -> None:
         """Only covers degree 2 Exponential CBF, i.e. Lg Lf \neq 0"""
-        super().__init__(dynamics, **kwargs)
-        self.Lf = kwargs.get("Lf", None)
-        self.Lf2 = kwargs.get("Lf2", None)
-        self.LgLf = kwargs.get("LgLf", None)
-        self.alpha2 = kwargs.get("alpha2", None)
-
-        assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
+        super().__init__(dynamics, params, test, **kwargs)
+        self.Lf = kwargs.get("Lf")
+        self.Lf2 = kwargs.get("Lf2")
+        self.LgLf = kwargs.get("LgLf")
+        self.alpha2 = kwargs.get("alpha2")
 
     def lie_derivatives(
         self, state: np.ndarray, time: float = 0.0
@@ -76,13 +88,16 @@ class ExponentialControlAffineCBF(ControlAffineCBF):
 
 
 class ImplicitCBF(CBF):
-    def __init__(self, dynamics: dynamics_f.Dynamics, params, **kwargs) -> None:
-        self.dynamics = dynamics
+    def __init__(
+        self, dynamics: Dynamics, params: Dict[str, Any], test: bool = True, **kwargs
+    ) -> None:
+        super().__init__(dynamics, params, test, **kwargs)
         self.backup_controller = kwargs.get("backup_controller")  # FIXME: Remove from here
+        if test:
+            test_cbf.test_implicit_cbf(self)
 
     def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = False) -> float:
         # This is only used for the "hacky" version --> Is it?
-        # assert isinstance(self.backup_controller, BackupController)
         ts = np.arange(0, self.backup_controller.T_backup, self.dynamics.dt) + t0
 
         hs = np.zeros((ts.shape[0] + 2))
@@ -128,8 +143,10 @@ class ImplicitCBF(CBF):
 
 # TOTEST
 class ControlAffineImplicitCBF(ImplicitCBF):
-    def __init__(self, dynamics: dynamics_f.ControlAffineDynamics, params, **kwargs):
-        super().__init__(dynamics, params, **kwargs)
+    def __init__(
+        self, dynamics: ControlAffineDynamics, params: Dict[str, Any], test: bool = True, **kwargs
+    ):
+        super().__init__(dynamics, params, test, **kwargs)
 
     def lie_derivatives(
         self,
@@ -157,11 +174,13 @@ class ControlAffineImplicitCBF(ImplicitCBF):
 
 # TOTEST
 class BackupController:
-    def __init__(self, dynamics: dynamics_f.Dynamics, T_backup: float, **kwargs):
+    def __init__(self, dynamics: Dynamics, T_backup: float, test: bool = True, **kwargs):
         self.dynamics = dynamics
         self.T_backup = T_backup
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
+        if test:
+            test_cbf.test_backup_controller(self)
 
     @abc.abstractmethod
     def policy(self, x: np.ndarray, t: float = 0.0) -> np.ndarray:

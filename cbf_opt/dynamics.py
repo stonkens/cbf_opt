@@ -1,14 +1,17 @@
 import abc
 import numpy as np
 from typing import Tuple
+from cbf_opt.tests import test_dynamics
 
 
 class Dynamics(metaclass=abc.ABCMeta):
-    def __init__(self, params: dict, **kwargs):
+    def __init__(self, params: dict, test: bool = True, **kwargs):
         self.n_dims = params["n_dims"]
         self.control_dims = params["control_dims"]
         self.disturbance_dims = params.get("disturbance_dims", 1)
         self.dt = params["dt"]
+        if test:
+            test_dynamics.test_dynamics(self)
 
     @abc.abstractmethod
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
@@ -60,6 +63,11 @@ class Dynamics(metaclass=abc.ABCMeta):
 
 
 class ControlAffineDynamics(Dynamics):
+    def __init__(self, params: dict, test: bool = True, **kwargs):
+        super().__init__(params, test, **kwargs)
+        if test:
+            test_dynamics.test_control_affine_dynamics(self)
+
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the continuous-time dynamics ODE: dx_dt = f(x, t) + g(x, t) @ u"""
         return (

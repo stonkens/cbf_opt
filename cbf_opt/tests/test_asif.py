@@ -1,11 +1,11 @@
-# TODO: Implement tests for ASIF
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
 from cbf_opt.cbf import CBF, ControlAffineCBF
-from cbf_opt.asif import ASIF, ControlAffineASIF
 import numpy as np
 
 
 def test_asif(asif_inst):
+    from cbf_opt.asif import ASIF
+
     assert isinstance(asif_inst, ASIF)
     assert isinstance(asif_inst.dynamics, Dynamics)
     assert isinstance(asif_inst.cbf, CBF)
@@ -21,6 +21,8 @@ def test_asif(asif_inst):
 
 
 def test_control_affine_asif(asif_inst):
+    from cbf_opt.asif import ControlAffineASIF
+
     assert isinstance(asif_inst, ControlAffineASIF)
     test_asif(asif_inst)
     assert isinstance(asif_inst.dynamics, ControlAffineDynamics)

@@ -1,10 +1,11 @@
 import numpy as np
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
-from cbf_opt.cbf import CBF, ControlAffineCBF
 
 
 def test_cbf(cbf_inst):
-    assert isinstance(cbf_inst, CBF)
+    from cbf_opt.cbf import CBF
+
+    assert isinstance(cbf_inst, CBF)  # FIXME: Do we want to impose this restriction?
     assert isinstance(cbf_inst.dynamics, Dynamics)
     state = np.random.rand(cbf_inst.dynamics.n_dims)
     time = np.random.rand()
@@ -20,7 +21,9 @@ def test_cbf(cbf_inst):
 
 
 def test_control_affine_cbf(cbf_inst):
-    assert isinstance(cbf_inst, ControlAffineCBF)
+    from cbf_opt.cbf import ControlAffineCBF
+
+    assert isinstance(cbf_inst, ControlAffineCBF)  # FIXME: Do we want to impose this restriction?
     test_cbf(cbf_inst)
     assert isinstance(cbf_inst.dynamics, ControlAffineDynamics)
     state = np.random.rand(cbf_inst.dynamics.n_dims)

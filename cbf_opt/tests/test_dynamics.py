@@ -1,8 +1,9 @@
 import numpy as np
-from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
 
 
 def test_dynamics(dyn_inst):
+    from cbf_opt.dynamics import Dynamics
+
     assert isinstance(dyn_inst, Dynamics)
     state = np.random.rand(dyn_inst.n_dims)
     control = np.random.rand(dyn_inst.control_dims)
@@ -39,6 +40,8 @@ def test_dynamics(dyn_inst):
 
 
 def test_control_affine_dynamics(dyn_inst):
+    from cbf_opt.dynamics import ControlAffineDynamics
+
     test_dynamics(dyn_inst)
     assert isinstance(dyn_inst, ControlAffineDynamics)
     state = np.random.rand(dyn_inst.n_dims)

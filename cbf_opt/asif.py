@@ -1,11 +1,12 @@
 import abc
 import cvxpy as cp
 import numpy as np
-from cbf_opt import dynamics as dynamics_f
-from cbf_opt import cbf as cbf_f
+from cbf_opt import Dynamics, ControlAffineDynamics
+from cbf_opt import CBF, ControlAffineCBF, ImplicitCBF, ControlAffineImplicitCBF, BackupController
 import logging
 from typing import Dict, Optional
 import torch
+from cbf_opt.tests import test_asif
 
 Array = np.ndarray or torch.tensor
 batched_ncbf = lambda x, y: torch.bmm(x, y)
@@ -13,9 +14,8 @@ batched_cbf = lambda x, y: np.einsum("ijk,ikl->ijl", x, y)
 single_cbf = lambda x, y: x @ y
 
 
-# TODO: Is this a subclass of Controller? (However that creates new dependencies)
 class ASIF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics: dynamics_f.Dynamics, cbf: cbf_f.CBF, **kwargs) -> None:
+    def __init__(self, dynamics: Dynamics, cbf: CBF, test: bool = True, **kwargs) -> None:
         self.dynamics = dynamics
         self.cbf = cbf
         self.nominal_control = None
@@ -26,6 +26,8 @@ class ASIF(metaclass=abc.ABCMeta):
             "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims)
         )
         self.controller_dt = kwargs.get("controller_dt", self.dynamics.dt)
+        if test:
+            test_asif.test_asif(self)
 
     def set_nominal_control(
         self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None
@@ -53,18 +55,21 @@ class ASIF(metaclass=abc.ABCMeta):
 
 class ControlAffineASIF(ASIF):
     def __init__(
-        self, dynamics: dynamics_f.ControlAffineDynamics, cbf: cbf_f.ControlAffineCBF, **kwargs
+        self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs
     ) -> None:
-        super().__init__(dynamics, cbf, **kwargs)
+        super().__init__(dynamics, cbf, test, **kwargs)
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control_cp = cp.Parameter(self.dynamics.control_dims)
 
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
-        self.b = cp.Parameter(1)
+        self.b = cp.Parameter((1,))
         self.A = cp.Parameter((1, self.dynamics.control_dims))
 
         self.opt_sol = np.zeros(self.filtered_control.shape)
+
+        if test:
+            test_asif.test_control_affine_asif(self)
 
     def setup_optimization_problem(self):
         """
@@ -108,7 +113,7 @@ class ControlAffineASIF(ASIF):
         opt_sols = np.array(opt_sols)
         return opt_sols
 
-    def _solve_problem(self) -> Array:
+    def _solve_problem(self):
         """Lower level function to solve the optimization problem"""
         solver_failure = False
         try:
@@ -152,17 +157,12 @@ class ControlAffineASIF(ASIF):
 
 class ImplicitASIF(metaclass=abc.ABCMeta):
     def __init__(
-        self,
-        dynamics: dynamics_f.Dynamics,
-        cbf: cbf_f.ImplicitCBF,
-        backup_controller: cbf_f.BackupController,
-        **kwargs
+        self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs
     ) -> None:
         self.dynamics = dynamics
         self.cbf = cbf
         self.nominal_control = None
         self.backup_controller = backup_controller
-        assert isinstance(self.backup_controller, cbf_f.BackupController)
         self.verify_every_x = kwargs.get("verify_every_x", 1)
         self.n_backup_steps = int(self.backup_controller.T_backup / self.dynamics.dt)
         self.alpha_backup = kwargs.get("alpha_backup", lambda x: x)
@@ -178,18 +178,18 @@ class ImplicitASIF(metaclass=abc.ABCMeta):
 class ImplicitControlAffineASIF(ImplicitASIF):
     def __init__(
         self,
-        dynamics: dynamics_f.ControlAffineDynamics,
-        cbf: cbf_f.ControlAffineImplicitCBF,
-        backup_controller: cbf_f.BackupController,
+        dynamics: ControlAffineDynamics,
+        cbf: ControlAffineImplicitCBF,
+        backup_controller: BackupController,
         **kwargs
     ) -> None:
         super().__init__(dynamics, cbf, backup_controller, **kwargs)
 
-        assert isinstance(self.dynamics, dynamics_f.ControlAffineDynamics)
-        assert isinstance(self.cbf, cbf_f.ControlAffineImplicitCBF)
+        assert isinstance(self.dynamics, ControlAffineDynamics)
+        assert isinstance(self.cbf, ControlAffineImplicitCBF)
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control_cp = cp.Parameter(self.dynamics.control_dims)
-        self.b = cp.Parameter(int(self.n_backup_steps / self.verify_every_x) + 2)
+        self.b = cp.Parameter((int(self.n_backup_steps / self.verify_every_x) + 2,))
         self.A = cp.Parameter(
             (int(self.n_backup_steps / self.verify_every_x) + 2, self.dynamics.control_dims)
         )
@@ -243,11 +243,7 @@ class ImplicitControlAffineASIF(ImplicitASIF):
 # TOTEST
 class TradeoffFilter(ImplicitASIF):
     def __init__(
-        self,
-        dynamics: dynamics_f.Dynamics,
-        cbf: cbf_f.ImplicitCBF,
-        backup_controller: cbf_f.BackupController,
-        **kwargs
+        self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs
     ):
         super().__init__(dynamics, cbf, backup_controller, **kwargs)
         self.beta = kwargs.get("beta", 10)
@@ -278,7 +274,7 @@ class TradeoffFilter(ImplicitASIF):
 # TOTEST
 # FIXME: Not for this code base
 class GeneralizedASIF(ASIF):
-    def __init__(self, dynamics: dynamics_f.Dynamics, cbf: cbf_f.CBF, **kwargs) -> None:
+    def __init__(self, dynamics: Dynamics, cbf: CBF, **kwargs) -> None:
         super().__init__(dynamics, cbf, **kwargs)
         self.beta0 = kwargs.get("beta0", 0.0)
         self.penalty_coeff = kwargs.get("penalty_coeff", 1.0)
@@ -287,11 +283,9 @@ class GeneralizedASIF(ASIF):
 # TOTEST
 # FIXME: Not for this code base
 class GeneralizedControlAffineASIF(GeneralizedASIF, ControlAffineASIF):
-    def __init__(
-        self, dynamics: dynamics_f.ControlAffineDynamics, cbf: cbf_f.ControlAffineCBF, **kwargs
-    ) -> None:
+    def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, **kwargs) -> None:
         super().__init__(dynamics, cbf, **kwargs)
-        self.beta = cp.Variable(1)
+        self.beta = cp.Variable((1,))
         self.obj += cp.Minimize(self.penalty_coeff * (self.beta - self.beta0) ** 2)
         self.constraints[0] = self.A @ self.filtered_control + self.b >= self.beta
 
