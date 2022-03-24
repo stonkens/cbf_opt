@@ -14,11 +14,18 @@ def _get_version():
         raise ValueError("`__version__` not defined in `cbf_opt/__init__.py`")
 
 
+def _parse_requirements(filename):
+    with open(os.path.join(_CURRENT_DIR, filename)) as f:
+        return [line.strip() for line in f.readlines()]
+
+
 setuptools.setup(
     name="cbf_opt",
     version=_get_version(),
     description="CBF QP implementation in Python",
     author="Sander Tonkens",
     author_email="sandertonkens@gmail.com",
+    packages=setuptools.find_packages(),
+    install_requires=_parse_requirements("requirements.txt"),
     python_requires=">=3.6",
 )

@@ -5,11 +5,11 @@ from cbf_opt import Dynamics, ControlAffineDynamics
 from cbf_opt import CBF, ControlAffineCBF, ImplicitCBF, ControlAffineImplicitCBF, BackupController
 import logging
 from typing import Dict, Optional
-import torch
 from cbf_opt.tests import test_asif
 
-Array = np.ndarray or torch.tensor
-batched_ncbf = lambda x, y: torch.bmm(x, y)
+# Array = np.ndarray or torch.tensor
+Array = np.ndarray
+# batched_ncbf = lambda x, y: torch.bmm(x, y)
 batched_cbf = lambda x, y: np.einsum("ijk,ikl->ijl", x, y)
 single_cbf = lambda x, y: x @ y
 
