@@ -30,9 +30,9 @@ def test_dynamics(dyn_inst):
         state2 = state + 1e-2 * np.random.rand(dyn_inst.n_dims)
         control2 = control + 1e-2 * np.random.rand(dyn_inst.control_dims)
         state_next = dyn_inst.step(state, control, time)
-        state2_next = dyn_inst.step(state2, control, time)
+        state2_next = dyn_inst.step(state2, control2, time)
         assert np.isclose(
-            state2_next - state_next, A_d @ (state2 - state) + B_d @ (control2 - control), atol=1e-6
+            state2_next - state_next, A_d @ (state2 - state) + B_d @ (control2 - control), atol=1e-5
         ).all(), "Taylor expansion not accurate, linearized dynamics might be wrong"
 
     except NotImplementedError:
