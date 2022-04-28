@@ -3,9 +3,12 @@ import cvxpy as cp
 import numpy as np
 from cbf_opt import Dynamics, ControlAffineDynamics
 from cbf_opt import CBF, ControlAffineCBF, ImplicitCBF, ControlAffineImplicitCBF, BackupController
-import logging
 from typing import Dict, Optional
 from cbf_opt.tests import test_asif
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Array = np.ndarray or torch.tensor
 Array = np.ndarray
@@ -50,7 +53,13 @@ class ASIF(metaclass=abc.ABCMeta):
         return {"unsafe": self.cbf.is_unsafe(state, time)}
 
     def save_measurements(self, state: Array, control: Array, time: float = 0.0) -> Dict:
-        return {"vf": self.cbf.vf(state, time)}
+        dict = (
+            self.nominal_policy.save_measurements(state, control, time)
+            if hasattr(self.nominal_policy, "save_measurements")
+            else {}
+        )
+        dict["vf"] = self.cbf.vf(state, time)
+        return dict
 
 
 class ControlAffineASIF(ASIF):
@@ -111,6 +120,7 @@ class ControlAffineASIF(ASIF):
             self._solve_problem()
             opt_sols.append(np.atleast_1d(self.opt_sol))
         opt_sols = np.array(opt_sols)
+
         return opt_sols
 
     def _solve_problem(self):
@@ -119,29 +129,29 @@ class ControlAffineASIF(ASIF):
         try:
             self.QP.solve(solver=self.solver, verbose=self.verbose)
             self.opt_sol = self.filtered_control.value
-        except cp.SolverError:
+        except (cp.SolverError, ValueError):
             solver_failure = True
         if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
-            logging.warning("QP solver failed")
+            logger.warning("QP solver failed")
             if (self.umin is None) and (self.umax is None):
-                logging.warning("Returning nominal control value")
+                logger.warning("Returning nominal control value")
                 self.opt_sol = self.nominal_control_cp.value
             else:
                 if self.umin is not None and self.umax is not None:
                     # TODO: This should depend on "controlMode"
-                    logging.warning("Returning safest possible control")
+                    logger.warning("Returning safest possible control")
                     self.opt_sol = (
                         np.int64(self.A.value >= 0) * self.umax
                         + np.int64(self.A.value < 0) * self.umin
                     ).reshape(-1)
                 elif (self.A.value >= 0).all() and self.umax is not None:
-                    logging.warning("Returning umax")
+                    logger.warning("Returning umax")
                     self.opt_sol = self.umax
                 elif (self.A.value <= 0).all() and self.umin is not None:
-                    logging.warning("Returning umin")
+                    logger.warning("Returning umin")
                     self.opt_sol = self.umin
                 else:
-                    logging.warning("Returning nominal control value")
+                    logger.warning("Returning nominal control value")
                     self.opt_sol = self.nominal_control_cp.value
                 # elif self.umax is not None:
                 #     self.opt_sol = (
