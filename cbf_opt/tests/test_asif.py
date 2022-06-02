@@ -1,6 +1,7 @@
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
 from cbf_opt.cbf import CBF, ControlAffineCBF
 import numpy as np
+import jax.numpy as jnp
 
 
 def test_asif(asif_inst):
@@ -16,7 +17,7 @@ def test_asif(asif_inst):
     t = np.random.rand()
     if hasattr(asif_inst, "nominal_policy"):
         nom_pol = asif_inst.nominal_policy(x, t)
-        assert isinstance(nom_pol, np.ndarray)
+        assert isinstance(nom_pol, np.ndarray) or isinstance(nom_pol, jnp.DeviceArray)
         assert nom_pol.shape[-1] == asif_inst.dynamics.control_dims
 
 
