@@ -10,12 +10,33 @@ class Dynamics(metaclass=abc.ABCMeta):
         self.control_dims = params["control_dims"]
         self.disturbance_dims = params.get("disturbance_dims", 1)
         self.dt = params["dt"]
+        self.periodic_dims = params.get("periodic_dims", [])
         if test:
             test_dynamics.test_dynamics(self)
 
     @abc.abstractmethod
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the continuous-time dynamics ODE \dot{x} = f(x, u, t)"""
+
+    def wrap_dynamics(self, state: np.ndarray) -> np.ndarray:
+        """
+        Periodic dimensions are wrapped to [-pi, pi)
+
+        Args:
+            state (np.ndarray): Unwrapped state
+
+        Returns:
+            state (np.ndarray): Wrapped state
+        """
+        for periodic_dim in self.periodic_dims:
+            try:
+                state[..., periodic_dim] = (state[..., periodic_dim] + np.pi) % (2 * np.pi) - np.pi
+            except TypeError:  # FIXME: Clunky at best, how to deal with jnp and np mix
+                state = state.at[periodic_dim].set(
+                    (state[periodic_dim] + np.pi) % (2 * np.pi) - np.pi
+                )
+
+        return state
 
     def state_jacobian(
         self, state: np.ndarray, control: np.ndarray, time: float = 0.0
@@ -48,18 +69,18 @@ class Dynamics(metaclass=abc.ABCMeta):
         """Implements the discrete-time dynamics ODE
         scheme in {fe, rk4}"""
         if scheme == "fe":
-            return state + self(state, control, time) * self.dt
+            n_state = state + self(state, control, time) * self.dt
         elif scheme == "rk4":
+            # TODO: Figure out how to do RK4 with periodic dimensions (aka angle normalization)
             # Assumes zoh on control
             k1 = self(state, control, time)
             k2 = self(state + k1 * self.dt / 2, control, time + self.dt / 2)
             k3 = self(state + k2 * self.dt / 2, control, time + self.dt / 2)
             k4 = self(state + k3 * self.dt, control, time + self.dt)
-            return state + (k1 + 2 * k2 + 2 * k3 + k4) * self.dt / 6
+            n_state = state + (k1 + 2 * k2 + 2 * k3 + k4) * self.dt / 6
         else:
             raise ValueError("scheme must be either 'fe' or 'rk4'")
-
-    # TODO: Add angle normalization after computing dynamics (think carefully where to add!)
+        return self.wrap_dynamics(n_state)
 
 
 class ControlAffineDynamics(Dynamics):
