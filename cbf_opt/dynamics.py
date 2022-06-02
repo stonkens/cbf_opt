@@ -113,3 +113,14 @@ class ControlAffineDynamics(Dynamics):
     def disturbance_jacobian(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         # TODO: Is this required?
         return np.atleast_2d(np.zeros((self.n_dims, self.disturbance_dims)))
+
+
+# TODO: Build wrapper for interface with openai gym (here the state is a class instance variable)
+class PartialObservableDynamics(Dynamics):
+    def __init__(self, params: dict, test: bool = True, **kwargs):
+        super().__init__(params, test, **kwargs)
+        self.obs_dims = params["obs_dims"]
+
+    @abc.abstractmethod
+    def observe(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
+        """Implements the observation function h(x,t)"""

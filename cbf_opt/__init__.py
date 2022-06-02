@@ -1,4 +1,4 @@
-from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
+from cbf_opt.dynamics import Dynamics, ControlAffineDynamics, PartialObservableDynamics
 from cbf_opt.cbf import (
     CBF,
     ControlAffineCBF,
