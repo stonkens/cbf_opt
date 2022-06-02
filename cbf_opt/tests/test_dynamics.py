@@ -19,6 +19,17 @@ def test_dynamics(dyn_inst):
         dyn_inst.n_dims,
         dyn_inst.control_dims,
     )
+
+    if len(dyn_inst.periodic_dims) > 0:
+        state2 = state.copy()
+        for periodic_dim in dyn_inst.periodic_dims:
+            state2[..., periodic_dim] += 2 * np.pi
+        assert np.allclose(dyn_inst(state, control, time), dyn_inst(state2, control, time))
+        assert np.allclose(
+            dyn_inst.step(state, control, time, scheme="fe"),
+            dyn_inst.step(state2, control, time, scheme="fe"),
+        )
+
     try:
         assert dyn_inst.state_jacobian(state, control, time).shape == (
             dyn_inst.n_dims,
