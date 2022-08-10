@@ -35,8 +35,23 @@ def test_control_affine_cbf(cbf_inst):
     assert Lg.shape == (1, cbf_inst.dynamics.control_dims)
 
 
+def test_backup_controller(ctrl_inst):
+    assert isinstance(ctrl_inst.dynamics, Dynamics)
+    state = np.random.rand(ctrl_inst.dynamics.n_dims)
+    time = np.random.rand()
+    assert ctrl_inst.umin.shape == (ctrl_inst.dynamics.control_dims,)
+    assert ctrl_inst.umax.shape == (ctrl_inst.dynamics.control_dims,)
+    assert ctrl_inst.policy(state, time).shape == (ctrl_inst.dynamics.control_dims,)
+    assert ctrl_inst.grad_policy(state, time).shape == (
+        ctrl_inst.dynamics.control_dims,
+        ctrl_inst.dynamics.n_dims,
+    )
+
+
 def test_implicit_cbf(cbf_inst):
     assert isinstance(cbf_inst.dynamics, Dynamics)
+    test_backup_controller(cbf_inst.backup_controller)
+    test_cbf(cbf_inst.safety_cbf)
     state = np.random.rand(cbf_inst.dynamics.n_dims)
     time = np.random.rand()
     assert isinstance(cbf_inst.backup_vf(state, time), float)
@@ -50,7 +65,7 @@ def test_implicit_cbf(cbf_inst):
     V = cbf_inst.backup_vf(state, time)
     dV_expected = grad_V @ dx
     dV_actual = cbf_inst.backup_vf(state + dx, time) - V
-    assert np.isclose(dV_expected, dV_actual, atol=1e-6)
+    assert np.isclose(dV_expected, dV_actual, atol=1e-4)
 
     dx = 1e-3 * np.random.rand(cbf_inst.dynamics.n_dims)
     grad_V = cbf_inst._grad_safety_vf(state, time)
@@ -60,14 +75,14 @@ def test_implicit_cbf(cbf_inst):
     assert np.isclose(dV_expected, dV_actual, atol=1e-6)
 
 
-def test_backup_controller(ctrl_inst):
-    assert isinstance(ctrl_inst.dynamics, Dynamics)
-    state = np.random.rand(ctrl_inst.dynamics.n_dims)
-    time = np.random.rand()
-    assert ctrl_inst.umin.shape == (ctrl_inst.dynamics.control_dims,)
-    assert ctrl_inst.umax.shape == (ctrl_inst.dynamics.control_dims,)
-    assert ctrl_inst.policy(state, time).shape == (ctrl_inst.dynamics.control_dims,)
-    assert ctrl_inst.grad_policy(state, time).shape == (
-        ctrl_inst.dynamics.control_dims,
-        ctrl_inst.dynamics.n_dims,
-    )
+def test_implicit_control_affine_cbf(cbf_inst):
+    assert isinstance(cbf_inst.dynamics, ControlAffineDynamics)
+    test_implicit_cbf(cbf_inst)
+    test_control_affine_cbf(cbf_inst.safety_cbf)
+    # state = np.random.rand(cbf_inst.dynamics.n_dims)
+    # time = np.random.rand()
+    # Lf, Lg = cbf_inst.lie_derivatives(state, time)  # TODO: Implement with sensitivity matrix
+    # assert Lf.ndim == 1
+    # assert Lg.ndim == 2
+    # assert Lf.shape == (2,)
+    # assert Lg.shape == (1, cbf_inst.dynamics.control_dims)

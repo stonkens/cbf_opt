@@ -25,16 +25,12 @@ class ASIF(metaclass=abc.ABCMeta):
         self.alpha = kwargs.get("alpha", lambda x: x)
         self.verbose = kwargs.get("verbose", False)
         self.solver = kwargs.get("solver", "OSQP")
-        self.nominal_policy = kwargs.get(
-            "nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims)
-        )
+        self.nominal_policy = kwargs.get("nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims))
         self.controller_dt = kwargs.get("controller_dt", self.dynamics.dt)
         if test:
             test_asif.test_asif(self)
 
-    def set_nominal_control(
-        self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None
-    ) -> None:
+    def set_nominal_control(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> None:
         if nominal_control is not None:
             assert isinstance(nominal_control, Array) and nominal_control.shape[-1] == (
                 self.dynamics.control_dims,
@@ -44,9 +40,7 @@ class ASIF(metaclass=abc.ABCMeta):
             self.nominal_control = self.nominal_policy(state, time)
 
     @abc.abstractmethod
-    def __call__(
-        self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None
-    ) -> Array:
+    def __call__(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> Array:
         """Implements the active safety invariance filter"""
 
     def save_info(self, state: Array, control: Array, time: float = 0.0) -> Dict:
@@ -63,9 +57,7 @@ class ASIF(metaclass=abc.ABCMeta):
 
 
 class ControlAffineASIF(ASIF):
-    def __init__(
-        self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs
-    ) -> None:
+    def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs) -> None:
         super().__init__(dynamics, cbf, test, **kwargs)
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control_cp = cp.Parameter(self.dynamics.control_dims)
@@ -86,9 +78,7 @@ class ControlAffineASIF(ASIF):
         s.t. A @ u + b >= 0
         """
         self.obj = cp.Minimize(
-            cp.quad_form(
-                self.filtered_control - self.nominal_control_cp, np.eye(self.dynamics.control_dims)
-            )
+            cp.quad_form(self.filtered_control - self.nominal_control_cp, np.eye(self.dynamics.control_dims))
         )
         self.constraints = [self.A @ self.filtered_control + self.b >= 0]
         if self.umin is not None:
@@ -141,8 +131,7 @@ class ControlAffineASIF(ASIF):
                     # TODO: This should depend on "controlMode"
                     logger.warning("Returning safest possible control")
                     self.opt_sol = (
-                        np.int64(self.A.value >= 0) * self.umax
-                        + np.int64(self.A.value < 0) * self.umin
+                        np.int64(self.A.value >= 0) * self.umax + np.int64(self.A.value < 0) * self.umin
                     ).reshape(-1)
                 elif (self.A.value >= 0).all() and self.umax is not None:
                     logger.warning("Returning umax")
@@ -166,9 +155,7 @@ class ControlAffineASIF(ASIF):
 
 
 class ImplicitASIF(metaclass=abc.ABCMeta):
-    def __init__(
-        self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs
-    ) -> None:
+    def __init__(self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs) -> None:
         self.dynamics = dynamics
         self.cbf = cbf
         self.nominal_control = None
@@ -200,9 +187,7 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control_cp = cp.Parameter(self.dynamics.control_dims)
         self.b = cp.Parameter((int(self.n_backup_steps / self.verify_every_x) + 2,))
-        self.A = cp.Parameter(
-            (int(self.n_backup_steps / self.verify_every_x) + 2, self.dynamics.control_dims)
-        )
+        self.A = cp.Parameter((int(self.n_backup_steps / self.verify_every_x) + 2, self.dynamics.control_dims))
         """
         min || u - u_des ||^2
         s.t. A @ u + b >= 0
@@ -212,7 +197,7 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         # TODO: Add umin and umax
         self.QP = cp.Problem(self.obj, self.constraints)
 
-    def __call__(self, state: Array, nominal_control=None, time: float = 0.0) -> Array:
+    def __call__(self, state: Array, time: float = 0.0, nominal_control=None) -> Array:
         # grad_safety = self.cbf._grad_safety_vf(state, time)  # TODO: change to not have _grad_vf
         # grad_backup = self.cbf._grad_backup_vf(state, time)  # TODO: change to not have _grad_vf
         states, Qs, times = self.backup_controller.rollout_backup_w_sensitivity_matrix(state, time)
@@ -237,9 +222,7 @@ class ImplicitControlAffineASIF(ImplicitASIF):
         self.b.value = b
 
         if nominal_control is not None:
-            assert isinstance(nominal_control, Array) and nominal_control.shape == (
-                self.dynamics.control_dims,
-            )
+            assert isinstance(nominal_control, Array) and nominal_control.shape == (self.dynamics.control_dims,)
             self.nominal_control_cp.value = nominal_control
         else:
             self.nominal_control_cp.value = self.nominal_policy(state, time)
@@ -252,36 +235,26 @@ class ImplicitControlAffineASIF(ImplicitASIF):
 
 # TOTEST
 class TradeoffFilter(ImplicitASIF):
-    def __init__(
-        self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs
-    ):
+    def __init__(self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs):
         super().__init__(dynamics, cbf, backup_controller, **kwargs)
         self.beta = kwargs.get("beta", 10)
-        self.decay_func = kwargs.get(
-            "decay_func", lambda x, t, h: 1 - np.exp(-self.beta * np.maximum(h, 0))
-        )
+        self.decay_func = kwargs.get("decay_func", lambda x, t, h: 1 - np.exp(-self.beta * np.maximum(h, 0)))
 
-    def __call__(
-        self, state: Array, nominal_control: Optional[Array] = None, time: float = 0.0
-    ) -> Array:
+    def __call__(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> Array:
         assert self.decay_func is not None, "Decay function must be specified"
         h_curr = self.cbf.vf(state, time)
         filter_rate = self.decay_func(state, time, h_curr)
 
         if nominal_control is not None:
-            assert isinstance(nominal_control, Array) and nominal_control.shape == (
-                self.dynamics.control_dims,
-            )
+            assert isinstance(nominal_control, Array) and nominal_control.shape == (self.dynamics.control_dims,)
         else:
             nominal_control = self.nominal_policy(state, time)
 
         return np.atleast_1d(
-            filter_rate * nominal_control
-            + (1 - filter_rate) * self.backup_controller.policy(state, time)
+            filter_rate * nominal_control + (1 - filter_rate) * self.backup_controller.policy(state, time)
         )
 
 
-# TOTEST
 # FIXME: Not for this code base
 class GeneralizedASIF(ASIF):
     def __init__(self, dynamics: Dynamics, cbf: CBF, **kwargs) -> None:
