@@ -1,12 +1,12 @@
 import numpy as np
-from cbf_opt.dynamics import Dynamics, ControlAffineDynamics
+import cbf_opt
 
 
 def test_cbf(cbf_inst):
     from cbf_opt.cbf import CBF
 
     assert isinstance(cbf_inst, CBF)  # FIXME: Do we want to impose this restriction?
-    assert isinstance(cbf_inst.dynamics, Dynamics)
+    assert isinstance(cbf_inst.dynamics, cbf_opt.dynamics.Dynamics)
     state = np.random.rand(cbf_inst.dynamics.n_dims)
     time = np.random.rand()
     assert isinstance(cbf_inst.vf(state, time), float)
@@ -25,7 +25,7 @@ def test_control_affine_cbf(cbf_inst):
 
     assert isinstance(cbf_inst, ControlAffineCBF)  # FIXME: Do we want to impose this restriction?
     test_cbf(cbf_inst)
-    assert isinstance(cbf_inst.dynamics, ControlAffineDynamics)
+    assert isinstance(cbf_inst.dynamics, cbf_opt.dynamics.ControlAffineDynamics)
     state = np.random.rand(cbf_inst.dynamics.n_dims)
     time = np.random.rand()
     Lf, Lg = cbf_inst.lie_derivatives(state, time)
@@ -36,7 +36,7 @@ def test_control_affine_cbf(cbf_inst):
 
 
 def test_backup_controller(ctrl_inst):
-    assert isinstance(ctrl_inst.dynamics, Dynamics)
+    assert isinstance(ctrl_inst.dynamics, cbf_opt.dynamics.Dynamics)
     state = np.random.rand(ctrl_inst.dynamics.n_dims)
     time = np.random.rand()
     assert ctrl_inst.umin.shape == (ctrl_inst.dynamics.control_dims,)
@@ -49,7 +49,7 @@ def test_backup_controller(ctrl_inst):
 
 
 def test_implicit_cbf(cbf_inst):
-    assert isinstance(cbf_inst.dynamics, Dynamics)
+    assert isinstance(cbf_inst.dynamics, cbf_opt.dynamicsDynamics)
     test_backup_controller(cbf_inst.backup_controller)
     test_cbf(cbf_inst.safety_cbf)
     state = np.random.rand(cbf_inst.dynamics.n_dims)
@@ -76,7 +76,7 @@ def test_implicit_cbf(cbf_inst):
 
 
 def test_implicit_control_affine_cbf(cbf_inst):
-    assert isinstance(cbf_inst.dynamics, ControlAffineDynamics)
+    assert isinstance(cbf_inst.dynamics, cbf_opt.dynamics.ControlAffineDynamics)
     test_implicit_cbf(cbf_inst)
     test_control_affine_cbf(cbf_inst.safety_cbf)
     # state = np.random.rand(cbf_inst.dynamics.n_dims)

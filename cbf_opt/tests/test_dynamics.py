@@ -1,20 +1,16 @@
 import numpy as np
+import cbf_opt
 
 
 def test_dynamics(dyn_inst):
-    from cbf_opt.dynamics import Dynamics
 
-    assert isinstance(dyn_inst, Dynamics)
+    assert isinstance(dyn_inst, cbf_opt.dynamics.Dynamics)
     state = np.random.rand(dyn_inst.n_dims)
     control = np.random.rand(dyn_inst.control_dims)
     time = np.random.rand(1)[0]
     assert dyn_inst(state, control, time).shape == (dyn_inst.n_dims,)  # For any system
-    assert dyn_inst.step(state, control, time, scheme="fe").shape == (
-        dyn_inst.n_dims,
-    )  # For any system
-    assert dyn_inst.step(state, control, time, scheme="rk4").shape == (
-        dyn_inst.n_dims,
-    )  # For any system
+    assert dyn_inst.step(state, control, time, scheme="fe").shape == (dyn_inst.n_dims,)  # For any system
+    assert dyn_inst.step(state, control, time, scheme="rk4").shape == (dyn_inst.n_dims,)  # For any system
     assert dyn_inst.control_jacobian(state, control, time).shape == (
         dyn_inst.n_dims,
         dyn_inst.control_dims,
@@ -51,10 +47,9 @@ def test_dynamics(dyn_inst):
 
 
 def test_control_affine_dynamics(dyn_inst):
-    from cbf_opt.dynamics import ControlAffineDynamics
 
     test_dynamics(dyn_inst)
-    assert isinstance(dyn_inst, ControlAffineDynamics)
+    assert isinstance(dyn_inst, cbf_opt.dynamics.ControlAffineDynamics)
     state = np.random.rand(dyn_inst.n_dims)
     time = np.random.rand()
     assert dyn_inst.open_loop_dynamics(state, time).shape[-1] == dyn_inst.n_dims

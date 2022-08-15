@@ -1,3 +1,5 @@
+from cbf_opt import tests
+from cbf_opt import utils
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics, PartialObservableDynamics
 from cbf_opt.cbf import (
     CBF,
@@ -14,7 +16,5 @@ from cbf_opt.asif import (
     TradeoffFilter,
 )
 
-import cbf_opt.tests
-from cbf_opt import utils
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
