@@ -6,11 +6,11 @@ from cbf_opt.tests import test_dynamics
 
 class Dynamics(metaclass=abc.ABCMeta):
     def __init__(self, params: dict, test: bool = True, **kwargs):
-        self.n_dims = params["n_dims"]
-        self.control_dims = params["control_dims"]
+        self.n_dims = len(self.STATES) if hasattr(self, "STATES") else params["n_dims"]
+        self.control_dims = len(self.CONTROLS) if hasattr(self, "CONTROLS") else params["control_dims"]
         self.disturbance_dims = params.get("disturbance_dims", 1)
         self.dt = params["dt"]
-        self.periodic_dims = params.get("periodic_dims", [])
+        self.periodic_dims = self.PERIODIC_DIMS if hasattr(self, "PERIODIC_DIMS") else []
         if test:
             test_dynamics.test_dynamics(self)
 
