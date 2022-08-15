@@ -32,29 +32,21 @@ class Dynamics(metaclass=abc.ABCMeta):
             try:
                 state[..., periodic_dim] = (state[..., periodic_dim] + np.pi) % (2 * np.pi) - np.pi
             except TypeError:  # FIXME: Clunky at best, how to deal with jnp and np mix
-                state = state.at[periodic_dim].set(
-                    (state[periodic_dim] + np.pi) % (2 * np.pi) - np.pi
-                )
+                state = state.at[periodic_dim].set((state[periodic_dim] + np.pi) % (2 * np.pi) - np.pi)
 
         return state
 
-    def state_jacobian(
-        self, state: np.ndarray, control: np.ndarray, time: float = 0.0
-    ) -> np.ndarray:
+    def state_jacobian(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         raise NotImplementedError("Define state_jacobian in subclass")
 
-    def control_jacobian(
-        self, state: np.ndarray, control: np.ndarray, time: float = 0.0
-    ) -> np.ndarray:
+    def control_jacobian(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         raise NotImplementedError("Define control_jacobian in subclass")
 
     def linearized_ct_dynamics(
         self, state: np.ndarray, control: np.ndarray, time: float = 0.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Computes the linearized state and control matrices, A and B, of the continuous-time dynamics"""
-        return self.state_jacobian(state, control, time), self.control_jacobian(
-            state, control, time
-        )
+        return self.state_jacobian(state, control, time), self.control_jacobian(state, control, time)
 
     def linearized_dt_dynamics(self, state: np.ndarray, control: np.ndarray, time: float = 0.0):
         """Implements the linearized discrete-time dynamics"""
@@ -63,9 +55,7 @@ class Dynamics(metaclass=abc.ABCMeta):
         B_d = self.dt * B
         return A_d, B_d
 
-    def step(
-        self, state: np.ndarray, control: np.ndarray, time: float = 0.0, scheme: str = "fe"
-    ) -> np.ndarray:
+    def step(self, state: np.ndarray, control: np.ndarray, time: float = 0.0, scheme: str = "fe") -> np.ndarray:
         """Implements the discrete-time dynamics ODE
         scheme in {fe, rk4}"""
         if scheme == "fe":
@@ -92,17 +82,14 @@ class ControlAffineDynamics(Dynamics):
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the continuous-time dynamics ODE: dx_dt = f(x, t) + g(x, t) @ u"""
         return (
-            self.open_loop_dynamics(state, time)
-            + (self.control_matrix(state, time) @ np.atleast_3d(control)).squeeze()
+            self.open_loop_dynamics(state, time) + (self.control_matrix(state, time) @ np.atleast_3d(control)).squeeze()
         )
 
     @abc.abstractmethod
     def open_loop_dynamics(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the open loop dynamics f(x,t)"""
 
-    def control_jacobian(
-        self, state: np.ndarray, control: np.ndarray, time: float = 0.0
-    ) -> np.ndarray:
+    def control_jacobian(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """For control affine systems the control_jacobian is equivalent to the control matrix"""
         return self.control_matrix(state, time)
 
