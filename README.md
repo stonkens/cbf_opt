@@ -9,6 +9,9 @@ Toolbox for implementing safety filters using Control Barrier Functions (CBFs) i
 ## Instructions
 `dynamics.py` provides abstract classes for different types of dynamics, `cbf.py` for different type of CBFs, and `asif.py` for different types of safety filters. The toolbox is compatible with batched inputs (`torch`, `tf` or `numpy`) and individual inputs (`numpy` or `jax`)
 
-To use this toolbox, a user defines the dynamics for their problem, the cbf, and the safety filter (solely requires setting $\alpha$ and the nominal policy). The user then can run experiments manually or using the `experiment-wrapper` toolbox [link](https://github.com/stonkens/experiment_wrapper). Both use-cases are showcased in the examples folder.
+Dependencies:
+- `cvxpy`
+- Soft dependency: `experiment-wrapper`: This package is experimental and not added to the `requirements.txt` file. Install it through `pip install experiment-wrapper` or downloading from source [link](https://github.com/stonkens/experiment_wrapper)
+To use this toolbox, a user defines the dynamics for their problem, the cbf, and the safety filter (solely requires setting $\alpha$ and the nominal policy). The user then can run experiments manually or using the `experiment-wrapper` package. Both use-cases are showcased in the examples folder.
 
 An example for the control-affine setting, the Adaptive Cruise Control problem, is available in `examples/acc.ipynb`.
