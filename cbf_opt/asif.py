@@ -101,15 +101,14 @@ class ControlAffineASIF(ASIF):
     def u(self, state: Array, time: float = 0.0):
         h = np.atleast_1d(self.cbf.vf(state, time))
         Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)  # TODO: Shouldn't Lf_h be a float?
-        opt_sols = []
+        opt_sols = np.zeros_like(self.nominal_control)
         if state.ndim == 1:
             state = state[None, ...]
         for i in range(state.shape[0]):
             self.set_constraint(Lf_h[i], Lg_h[i], h[i])
             self.nominal_control_cp.value = np.atleast_1d(self.nominal_control[i])
             self._solve_problem()
-            opt_sols.append(np.atleast_1d(self.opt_sol))
-        opt_sols = np.array(opt_sols)
+            opt_sols[i] = self.opt_sol
 
         return opt_sols
 
@@ -117,8 +116,11 @@ class ControlAffineASIF(ASIF):
         """Lower level function to solve the optimization problem"""
         solver_failure = False
         try:
-            self.QP.solve(solver=self.solver, verbose=self.verbose)
-            self.opt_sol = self.filtered_control.value
+            val = self.QP.solve(solver=self.solver, verbose=self.verbose)
+            if val == np.inf:
+                solver_failure = True
+            else:
+                self.opt_sol = self.filtered_control.value
         except (cp.SolverError, ValueError):
             solver_failure = True
         if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
