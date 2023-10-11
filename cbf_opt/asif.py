@@ -32,9 +32,8 @@ class ASIF(metaclass=abc.ABCMeta):
 
     def set_nominal_control(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> None:
         if nominal_control is not None:
-            assert isinstance(nominal_control, Array) and nominal_control.shape[-1] == (
-                self.dynamics.control_dims,
-            )  # TODO: can we just get  rid of this?
+            # TODO: can we just get  rid of this?
+            assert isinstance(nominal_control, Array) and nominal_control.shape[-1] == self.dynamics.control_dims
             self.nominal_control = nominal_control
         else:
             self.nominal_control = self.nominal_policy(state, time)
@@ -126,24 +125,40 @@ class ControlAffineASIF(ASIF):
         if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
             logger.warning("QP solver failed")
             if (self.umin is None) and (self.umax is None):
-                logger.warning("Returning nominal control value")
+                logger.warning("Returning nominal control value, but this should not happen")
                 self.opt_sol = self.nominal_control_cp.value
             else:
-                if self.umin is not None and self.umax is not None:
-                    # TODO: This should depend on "controlMode"
-                    logger.warning("Returning safest possible control")
-                    self.opt_sol = (
-                        np.int64(self.A.value >= 0) * self.umax + np.int64(self.A.value < 0) * self.umin
-                    ).reshape(-1)
-                elif (self.A.value >= 0).all() and self.umax is not None:
-                    logger.warning("Returning umax")
-                    self.opt_sol = self.umax
-                elif (self.A.value <= 0).all() and self.umin is not None:
-                    logger.warning("Returning umin")
-                    self.opt_sol = self.umin
-                else:
-                    logger.warning("Returning nominal control value")
+                umin = self.umin if self.umin is not None else -np.inf
+                umax = self.umax if self.umax is not None else np.inf
+                QP_wout_constraints = cp.Problem(self.obj, self.constraints[0:1])
+                try:
+                    val = QP_wout_constraints.solve(solver=self.solver, verbose=self.verbose)
+                    if val == np.inf:
+                        solver_failure = True
+                    else:
+                        self.opt_sol = np.clip(self.filtered_control.value, umin, umax)
+                except (cp.SolverError, ValueError):
+                    solver_failure = True
+                if QP_wout_constraints.status in ["infeasible", "unbounded"] or solver_failure:
+                    logger.warning("QP solver failed even without input constraints")
+                    logger.warning("Returning nominal control value, but this should not happen")
                     self.opt_sol = self.nominal_control_cp.value
+
+                # if self.umin is not None and self.umax is not None:
+                #     # TODO: This should depend on "controlMode"
+                #     logger.warning("Returning safest possible control")
+                #     self.opt_sol = (
+                #         np.int64(self.A.value >= 0) * self.umax + np.int64(self.A.value < 0) * self.umin
+                #     ).reshape(-1)
+                # elif (self.A.value >= 0).all() and self.umax is not None:
+                #     logger.warning("Returning umax")
+                #     self.opt_sol = self.umax
+                # elif (self.A.value <= 0).all() and self.umin is not None:
+                #     logger.warning("Returning umin")
+                #     self.opt_sol = self.umin
+                # else:
+                #     logger.warning("Returning nominal control value")
+                #     self.opt_sol = self.nominal_control_cp.value
                 # elif self.umax is not None:
                 #     self.opt_sol = (
                 #         np.int64(self.A.value >= 0) * self.umax
