@@ -81,9 +81,12 @@ class ControlAffineDynamics(Dynamics):
 
     def __call__(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the continuous-time dynamics ODE: dx_dt = f(x, t) + g(x, t) @ u"""
-        return (
-            self.open_loop_dynamics(state, time) + (self.control_matrix(state, time) @ np.atleast_3d(control)).squeeze()
-        )
+        try:
+            return self.open_loop_dynamics(state, time) + self.control_matrix(state, time) @ control
+        except ValueError:
+            return (
+                self.open_loop_dynamics(state, time) + (self.control_matrix(state, time) @ np.atleast_3d(control)).squeeze()
+                )
 
     @abc.abstractmethod
     def open_loop_dynamics(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
