@@ -54,7 +54,7 @@ class ControlAffineCBF(CBF):
         try:
             Lf = np.atleast_1d(grad_vf @ f)
             Lg = np.atleast_2d(grad_vf @ g)
-        except ValueError:
+        except (ValueError, TypeError):
             Lf = np.einsum("ij,ij->i", grad_vf, f)
             Lg = np.einsum("ij, ijk->ik", grad_vf, g)
         return Lf, Lg

@@ -63,6 +63,7 @@ class ControlAffineASIF(ASIF):
 
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
+        self.scale_r_matrix = kwargs.get("scale_R_matrix", True)
         self.b = cp.Parameter((1,))
         self.A = cp.Parameter((1, self.dynamics.control_dims))
 
@@ -76,10 +77,14 @@ class ControlAffineASIF(ASIF):
         min || u - u_des ||^2
         s.t. A @ u + b >= 0
         """
+        if self.scale_R_matrix and self.umin is not None and self.umax is not None:
+            R_matrix = np.diag(1 / ((self.umax - self.umin) ** 2))
+        else:
+            R_matrix = np.eye(self.dynamics.control_dims)
         self.obj = cp.Minimize(
-            cp.quad_form(self.filtered_control - self.nominal_control_cp, np.eye(self.dynamics.control_dims))
+            cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix)
         )
-        self.constraints = [self.A @ self.filtered_control + self.b >= 0]
+        self.constraints = [self.A @ self.filtered_control + self.b >= 1e-6]
         if self.umin is not None:
             self.constraints.append(self.filtered_control >= self.umin)
         if self.umax is not None:
@@ -115,7 +120,11 @@ class ControlAffineASIF(ASIF):
         """Lower level function to solve the optimization problem"""
         solver_failure = False
         try:
-            val = self.QP.solve(solver=self.solver, verbose=self.verbose)
+            if self.solver == "GUROBI":
+                val = self.QP.solve(solver=self.solver, verbose=self.verbose, reoptimize=True)
+            else:
+                val = self.QP.solve(solver=self.solver, verbose=self.verbose)
+
             if val == np.inf:
                 solver_failure = True
             else:
@@ -128,11 +137,15 @@ class ControlAffineASIF(ASIF):
                 logger.warning("Returning nominal control value, but this should not happen")
                 self.opt_sol = self.nominal_control_cp.value
             else:
+                solver_failure = False
                 umin = self.umin if self.umin is not None else -np.inf
                 umax = self.umax if self.umax is not None else np.inf
                 QP_wout_constraints = cp.Problem(self.obj, self.constraints[0:1])
                 try:
-                    val = QP_wout_constraints.solve(solver=self.solver, verbose=self.verbose)
+                    if self.solver == "GUROBI":
+                        val = QP_wout_constraints.solve(solver=self.solver, verbose=self.verbose, reoptimize=True)
+                    else:
+                        val = QP_wout_constraints.solve(solver=self.solver, verbose=self.verbose)
                     if val == np.inf:
                         solver_failure = True
                     else:
@@ -140,36 +153,35 @@ class ControlAffineASIF(ASIF):
                 except (cp.SolverError, ValueError):
                     solver_failure = True
                 if QP_wout_constraints.status in ["infeasible", "unbounded"] or solver_failure:
-                    logger.warning("QP solver failed even without input constraints")
+                    logger.error("QP solver failed even without input constraints")
                     logger.warning("Returning nominal control value, but this should not happen")
                     self.opt_sol = self.nominal_control_cp.value
 
-                # if self.umin is not None and self.umax is not None:
-                #     # TODO: This should depend on "controlMode"
-                #     logger.warning("Returning safest possible control")
-                #     self.opt_sol = (
-                #         np.int64(self.A.value >= 0) * self.umax + np.int64(self.A.value < 0) * self.umin
-                #     ).reshape(-1)
-                # elif (self.A.value >= 0).all() and self.umax is not None:
-                #     logger.warning("Returning umax")
-                #     self.opt_sol = self.umax
-                # elif (self.A.value <= 0).all() and self.umin is not None:
-                #     logger.warning("Returning umin")
-                #     self.opt_sol = self.umin
-                # else:
-                #     logger.warning("Returning nominal control value")
-                #     self.opt_sol = self.nominal_control_cp.value
-                # elif self.umax is not None:
-                #     self.opt_sol = (
-                #         np.int64(self.A.value >= 0) * self.umax
-                #         + np.int64(self.A.value < 0) * self.nominal_control_cp.value
-                #     ).reshape(-1)
-                # elif self.umin is not None:
-                #     self.opt_sol = (
-                #         np.int64(self.A.value >= 0) * self.nominal_control_cp.value
-                #         + np.int64(self.A.value < 0) * self.umin
-                #     ).reshape(-1)
 
+class SlackifiedControlAffineASIF(ControlAffineASIF):
+    def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs) -> None:
+        super().__init__(dynamics, cbf, test, **kwargs)
+        self.slack_penalty = kwargs.get("slack_penalty", 1e5)
+        self.slack = cp.Variable((1,), pos=True)
+
+    def setup_optimization_problem(self):
+        if self.umin is not None and self.umax is not None:
+            R_matrix = np.diag(1 / ((self.umax - self.umin) ** 2))
+        else:
+            R_matrix = np.eye(self.dynamics.control_dims)
+        self.obj = cp.Minimize(cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix) + self.slack_penalty * cp.norm(self.slack, 1))
+        self.constraints = [self.A @ self.filtered_control + self.b >= -self.slack]
+        if self.umin is not None:
+            self.constraints.append(self.filtered_control >= self.umin)
+        if self.umax is not None:
+            self.constraints.append(self.filtered_control <= self.umax)
+        self.QP = cp.Problem(self.obj, self.constraints)
+        assert self.QP.is_qp(), "This is not a quadratic program"
+
+    def _solve_problem(self):
+        """Lower level function to solve the optimization problem"""
+        val = self.QP.solve(solver=self.solver, verbose=self.verbose)
+        self.opt_sol = self.filtered_control.value
 
 class ImplicitASIF(metaclass=abc.ABCMeta):
     def __init__(self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs) -> None:

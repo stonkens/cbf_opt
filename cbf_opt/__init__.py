@@ -1,6 +1,6 @@
 from cbf_opt import tests
 from cbf_opt import utils
-from cbf_opt.dynamics import Dynamics, ControlAffineDynamics, PartialObservableDynamics
+from cbf_opt.dynamics import Dynamics, ControlAffineDynamics, PartialObservableDynamics, BatchedDynamics
 from cbf_opt.cbf import (
     CBF,
     ControlAffineCBF,
@@ -14,6 +14,7 @@ from cbf_opt.asif import (
     ImplicitASIF,
     ImplicitControlAffineASIF,
     TradeoffFilter,
+    SlackifiedControlAffineASIF,
 )
 
 

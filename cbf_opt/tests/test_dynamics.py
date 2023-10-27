@@ -3,8 +3,6 @@ import cbf_opt
 
 
 def test_dynamics(dyn_inst):
-
-    assert isinstance(dyn_inst, cbf_opt.dynamics.Dynamics)
     state = np.random.rand(dyn_inst.n_dims)
     control = np.random.rand(dyn_inst.control_dims)
     time = np.random.rand(1)[0]

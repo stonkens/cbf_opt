@@ -10,6 +10,7 @@ class Dynamics(metaclass=abc.ABCMeta):
         self.control_dims = len(self.CONTROLS) if hasattr(self, "CONTROLS") else params["control_dims"]
         self.disturbance_dims = params.get("disturbance_dims", 1)
         self.dt = params["dt"]
+        self.step_scheme = params.get("step_scheme", "fe")
         self.periodic_dims = self.PERIODIC_DIMS if hasattr(self, "PERIODIC_DIMS") else []
         if test:
             test_dynamics.test_dynamics(self)
@@ -55,12 +56,12 @@ class Dynamics(metaclass=abc.ABCMeta):
         B_d = self.dt * B
         return A_d, B_d
 
-    def step(self, state: np.ndarray, control: np.ndarray, time: float = 0.0, scheme: str = "fe") -> np.ndarray:
+    def step(self, state: np.ndarray, control: np.ndarray, time: float = 0.0) -> np.ndarray:
         """Implements the discrete-time dynamics ODE
         scheme in {fe, rk4}"""
-        if scheme == "fe":
+        if self.step_scheme == "fe":
             n_state = state + self(state, control, time) * self.dt
-        elif scheme == "rk4":
+        elif self.step_scheme == "rk4":
             # TODO: Figure out how to do RK4 with periodic dimensions (aka angle normalization)
             # Assumes zoh on control
             k1 = self(state, control, time)
@@ -103,6 +104,24 @@ class ControlAffineDynamics(Dynamics):
     def disturbance_jacobian(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
         # TODO: Is this required?
         return np.atleast_2d(np.zeros((self.n_dims, self.disturbance_dims)))
+
+
+class BatchedDynamics:
+    def __init__(self, dyn):
+        import jax
+        self.dyn = dyn
+        for attr_name, attr_value in vars(self.dyn).items():
+            setattr(self, attr_name, attr_value)
+        
+        for attr_name, attr_value in vars(self.dyn.__class__).items():
+            if not callable(attr_value) and not attr_name.startswith("__"):
+                setattr(self, attr_name, attr_value)
+
+        self.open_loop_dynamics = jax.vmap(dyn.open_loop_dynamics)
+        self.control_matrix = jax.vmap(dyn.control_matrix)
+        self.disturbance_jacobian = jax.vmap(dyn.disturbance_jacobian)
+        self.state_jacobian = jax.vmap(dyn.state_jacobian)
+        self.step = jax.vmap(dyn.step)
 
 
 # TODO: Build wrapper for interface with openai gym (here the state is a class instance variable)
