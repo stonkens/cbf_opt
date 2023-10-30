@@ -171,6 +171,76 @@ class ControlAffineASIF(ASIF):
                 #     ).reshape(-1)
 
 
+class RelaxedControlAffineASIF(ControlAffineASIF):
+    def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs) -> None:
+        super().__init__(dynamics, cbf, test, **kwargs)
+        self.slack_variable = cp.Variable(1)
+
+        self.slack_penalty = kwargs.get("slack_penalty")
+
+    def setup_optimization_problem(self):
+        """
+        min || u - u_des ||^2 + c mu^2
+        s.t. A @ u + b >= -mu
+             mu >= 0
+        """
+        self.obj = cp.Minimize(
+            cp.quad_form(self.filtered_control - self.nominal_control_cp, np.eye(self.dynamics.control_dims)) + self.slack_penalty*self.slack_variable**2
+        )
+        self.constraints = [self.A @ self.filtered_control + self.b + self.slack_variable>= 0]
+        if self.umin is not None:
+            self.constraints.append(self.filtered_control >= self.umin)
+        if self.umax is not None:
+            self.constraints.append(self.filtered_control <= self.umax)
+        if self.slack_penalty is not None:
+            self.constraints.append(self.slack_variable >= 0)
+        self.QP = cp.Problem(self.obj, self.constraints)
+        assert self.QP.is_qp(), "This is not a quadratic program"
+
+    def set_constraint(self, Lf_h: Array, Lg_h: Array, h: float):
+        super().set_constraint(Lf_h, Lg_h,h)
+
+    def __call__(self, state: Array, time: float = 0.0, nominal_control=None) -> Array:
+        if not hasattr(self, "QP"):
+            self.setup_optimization_problem()
+        self.set_nominal_control(state, time, nominal_control)
+        return self.u(state, time)
+
+    def u(self, state: Array, time: float = 0.0):
+        h = np.atleast_1d(self.cbf.vf(state, time))
+        Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)  # TODO: Shouldn't Lf_h be a float?
+        opt_sols = np.zeros_like(self.nominal_control)
+        if state.ndim == 1:
+            state = state[None, ...]
+        for i in range(state.shape[0]):
+            self.set_constraint(Lf_h[i], Lg_h[i], h[i])
+            self.nominal_control_cp.value = np.atleast_1d(self.nominal_control[i])
+            self._solve_problem()
+            opt_sols[i] = self.opt_sol
+
+        return opt_sols
+
+    def _solve_problem(self):
+        """Lower level function to solve the optimization problem"""
+        solver_failure = False
+        try:
+            val = self.QP.solve(solver=self.solver, verbose=self.verbose)
+            if val == np.inf:
+                solver_failure = True
+            else:
+                self.opt_sol = self.filtered_control.value
+                breakpoint()
+        except (cp.SolverError, ValueError):
+            solver_failure = True
+        if self.QP.status in ["infeasible", "unbounded"] or solver_failure:
+            logger.warning("QP solver failed")
+            logger.warning("Returning nominal control value, but this should not happen")
+            self.opt_sol = self.nominal_control_cp.value
+
+#class RelaxedControlAffineASIF(ControlAffineASIF):
+#    def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs) -> None:
+#        super().__init__(dynamics, cbf, test, **kwargs)
+
 class ImplicitASIF(metaclass=abc.ABCMeta):
     def __init__(self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs) -> None:
         self.dynamics = dynamics
