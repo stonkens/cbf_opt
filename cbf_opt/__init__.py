@@ -15,6 +15,7 @@ from cbf_opt.asif import (
     ImplicitControlAffineASIF,
     TradeoffFilter,
     SlackifiedControlAffineASIF,
+    TimeVaryingASIF
 )
 
 

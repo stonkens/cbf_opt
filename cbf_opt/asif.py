@@ -30,7 +30,7 @@ class ASIF(metaclass=abc.ABCMeta):
         if test:
             test_asif.test_asif(self)
 
-    def set_nominal_control(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> None:
+    def _set_nominal_control(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> None:
         if nominal_control is not None:
             # TODO: can we just get  rid of this?
             assert isinstance(nominal_control, Array) and nominal_control.shape[-1] == self.dynamics.control_dims
@@ -81,9 +81,7 @@ class ControlAffineASIF(ASIF):
             R_matrix = np.diag(1 / ((self.umax - self.umin) ** 2))
         else:
             R_matrix = np.eye(self.dynamics.control_dims)
-        self.obj = cp.Minimize(
-            cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix)
-        )
+        self.obj = cp.Minimize(cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix))
         self.constraints = [self.A @ self.filtered_control + self.b >= 1e-6]
         if self.umin is not None:
             self.constraints.append(self.filtered_control >= self.umin)
@@ -99,7 +97,7 @@ class ControlAffineASIF(ASIF):
     def __call__(self, state: Array, time: float = 0.0, nominal_control=None) -> Array:
         if not hasattr(self, "QP"):
             self.setup_optimization_problem()
-        self.set_nominal_control(state, time, nominal_control)
+        self._set_nominal_control(state, time, nominal_control)
         return self.u(state, time)
 
     def u(self, state: Array, time: float = 0.0):
@@ -169,7 +167,10 @@ class SlackifiedControlAffineASIF(ControlAffineASIF):
             R_matrix = np.diag(1 / ((self.umax - self.umin) ** 2))
         else:
             R_matrix = np.eye(self.dynamics.control_dims)
-        self.obj = cp.Minimize(cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix) + self.slack_penalty * cp.norm(self.slack, 1))
+        self.obj = cp.Minimize(
+            cp.quad_form(self.filtered_control - self.nominal_control_cp, R_matrix)
+            + self.slack_penalty * cp.norm(self.slack, 1)
+        )
         self.constraints = [self.A @ self.filtered_control + self.b >= -self.slack]
         if self.umin is not None:
             self.constraints.append(self.filtered_control >= self.umin)
@@ -182,6 +183,25 @@ class SlackifiedControlAffineASIF(ControlAffineASIF):
         """Lower level function to solve the optimization problem"""
         val = self.QP.solve(solver=self.solver, verbose=self.verbose)
         self.opt_sol = self.filtered_control.value
+
+
+class TimeVaryingASIF:
+    def __init__(self, asifs: Dict[int, ASIF], condition: callable): 
+        self.asifs = asifs
+        self.condition = condition
+
+    def __call__(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> Array:
+        asif_idx = self.condition(state, time)
+        return self.asifs[asif_idx](state, time, nominal_control)
+    
+    def save_info(self, state: Array, control: Array, time: float = 0.0) -> Dict:
+        asif_idx = self.condition(state, time)
+        return self.asifs[asif_idx].save_info(state, control, time)
+
+    def save_measurements(self, state: Array, control: Array, time: float = 0.0) -> Dict:
+        asif_idx = self.condition(state, time)
+        return self.asifs[asif_idx].save_measurements(state, control, time)
+
 
 class ImplicitASIF(metaclass=abc.ABCMeta):
     def __init__(self, dynamics: Dynamics, cbf: ImplicitCBF, backup_controller: BackupController, **kwargs) -> None:
