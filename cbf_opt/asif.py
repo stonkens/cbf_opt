@@ -63,7 +63,7 @@ class ControlAffineASIF(ASIF):
 
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
-        self.scale_r_matrix = kwargs.get("scale_R_matrix", True)
+        self.scale_R_matrix = kwargs.get("scale_R_matrix", True)
         self.b = cp.Parameter((1,))
         self.A = cp.Parameter((1, self.dynamics.control_dims))
 
