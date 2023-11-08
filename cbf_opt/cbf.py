@@ -3,6 +3,7 @@ from typing import Any, Tuple, Dict
 import numpy as np
 from cbf_opt import Dynamics, ControlAffineDynamics
 from cbf_opt.tests import test_cbf
+import itertools
 
 
 class CBF(metaclass=abc.ABCMeta):
@@ -49,15 +50,32 @@ class ControlAffineCBF(CBF):
         :return: L_{f(x)} h, L_{g(x)} h with h the value function vf
         """
         grad_vf = self._grad_vf(state, time)
-        f = self.dynamics.open_loop_dynamics(state, time)
-        g = self.dynamics.control_matrix(state, time)
-        try:
-            Lf = np.atleast_1d(grad_vf @ f)
-            Lg = np.atleast_2d(grad_vf @ g)
-        except (ValueError, TypeError):
-            Lf = np.einsum("ij,ij->i", grad_vf, f)
-            Lg = np.einsum("ij, ijk->ik", grad_vf, g)
-        return Lf, Lg
+
+        keys, values = zip(*self.dynamics.all_params.items())
+        extremum_values = (v if isinstance(v, list) else [v] for v in values)
+        extremums = [dict(zip(keys, v)) for v in itertools.product(*extremum_values)]
+
+        Lfs, Lgs, Lws = [], [], []
+
+        for extremum in extremums:
+            self.dynamics.params = extremum
+            f = self.dynamics.open_loop_dynamics(state, time)
+            g = self.dynamics.control_matrix(state, time)
+            w = self.dynamics.disturbance_matrix(state, time)
+
+            try:
+                Lf = np.atleast_1d(grad_vf @ f)
+                Lg = np.atleast_2d(grad_vf @ g)
+                Lw = np.atleast_2d(grad_vf @ w)
+            except (ValueError, TypeError):
+                Lf = np.einsum("ij,ij->i", grad_vf, f)
+                Lg = np.einsum("ij, ijk->ik", grad_vf, g)
+                Lw = np.einsum("ij, ijk->ik", grad_vf, w)
+            Lfs.append(Lf)
+            Lgs.append(Lg)
+            Lws.append(Lw)
+
+        return np.array(Lfs).swapaxes(0, 1), np.array(Lgs).swapaxes(0, 1), np.array(Lws).swapaxes(0, 1)
 
 
 class ExponentialControlAffineCBF(ControlAffineCBF):

@@ -1,4 +1,5 @@
 import abc
+import itertools
 import cvxpy as cp
 import numpy as np
 from cbf_opt import Dynamics, ControlAffineDynamics
@@ -60,12 +61,14 @@ class ControlAffineASIF(ASIF):
         super().__init__(dynamics, cbf, test, **kwargs)
         self.filtered_control = cp.Variable(self.dynamics.control_dims)
         self.nominal_control_cp = cp.Parameter(self.dynamics.control_dims)
-
         self.umin = kwargs.get("umin")
         self.umax = kwargs.get("umax")
+        self.dmin = kwargs.get("dmin", np.zeros(self.dynamics.disturbance_dims))
+        self.dmax = kwargs.get("dmax", np.zeros(self.dynamics.disturbance_dims))
+
         self.scale_R_matrix = kwargs.get("scale_R_matrix", True)
-        self.b = cp.Parameter((1,))
-        self.A = cp.Parameter((1, self.dynamics.control_dims))
+        self.b = cp.Parameter((2**self.dynamics.nbr_uncertain_params,))
+        self.A = cp.Parameter((2**self.dynamics.nbr_uncertain_params, self.dynamics.control_dims))
 
         self.opt_sol = np.zeros(self.filtered_control.shape)
 
@@ -90,8 +93,8 @@ class ControlAffineASIF(ASIF):
         self.QP = cp.Problem(self.obj, self.constraints)
         assert self.QP.is_qp(), "This is not a quadratic program"
 
-    def set_constraint(self, Lf_h: Array, Lg_h: Array, h: float):
-        self.b.value = np.atleast_1d(self.alpha(h) + Lf_h)
+    def set_constraint(self, Lf_h: Array, Lg_h: Array, h: float, Lw_h=0.0):
+        self.b.value = np.atleast_1d(self.alpha(h) + Lf_h + Lw_h)
         self.A.value = np.atleast_2d(Lg_h)
 
     def __call__(self, state: Array, time: float = 0.0, nominal_control=None) -> Array:
@@ -102,12 +105,18 @@ class ControlAffineASIF(ASIF):
 
     def u(self, state: Array, time: float = 0.0):
         h = np.atleast_1d(self.cbf.vf(state, time))
-        Lf_h, Lg_h = self.cbf.lie_derivatives(state, time)  # TODO: Shouldn't Lf_h be a float?
+        Lf_h, Lg_h, Lw_h = self.cbf.lie_derivatives(state, time)
+        possible_disturbances = np.array([p for p in itertools.product(*zip(self.dmin, self.dmax))])
         opt_sols = np.zeros_like(self.nominal_control)
         if state.ndim == 1:
             state = state[None, ...]
         for i in range(state.shape[0]):
-            self.set_constraint(Lf_h[i], Lg_h[i], h[i])
+            # Set disturbance as the most atagonistic one
+            if self.dynamics.disturbance_dims > 0:
+                Lw_hd = np.min(np.einsum("ik,jk->ij", Lw_h[i], possible_disturbances), axis=-1)
+            else:
+                Lw_hd = 0.0
+            self.set_constraint(Lf_h[i], Lg_h[i], h[i], Lw_hd)
             self.nominal_control_cp.value = np.atleast_1d(self.nominal_control[i])
             self._solve_problem()
             opt_sols[i] = self.opt_sol
@@ -138,7 +147,7 @@ class ControlAffineASIF(ASIF):
                 solver_failure = False
                 umin = self.umin if self.umin is not None else -np.inf
                 umax = self.umax if self.umax is not None else np.inf
-                QP_wout_constraints = cp.Problem(self.obj, self.constraints[0:1])
+                QP_wout_constraints = cp.Problem(self.obj, self.constraints[0:-2])
                 try:
                     if self.solver == "GUROBI":
                         val = QP_wout_constraints.solve(solver=self.solver, verbose=self.verbose, reoptimize=True)
@@ -160,10 +169,10 @@ class SlackifiedControlAffineASIF(ControlAffineASIF):
     def __init__(self, dynamics: ControlAffineDynamics, cbf: ControlAffineCBF, test: bool = True, **kwargs) -> None:
         super().__init__(dynamics, cbf, test, **kwargs)
         self.slack_penalty = kwargs.get("slack_penalty", 1e5)
-        self.slack = cp.Variable((1,), pos=True)
+        self.slack = cp.Variable((2**self.dynamics.nbr_uncertain_params), pos=True)
 
     def setup_optimization_problem(self):
-        if self.umin is not None and self.umax is not None:
+        if self.scale_R_matrix and self.umin is not None and self.umax is not None:
             R_matrix = np.diag(1 / ((self.umax - self.umin) ** 2))
         else:
             R_matrix = np.eye(self.dynamics.control_dims)
@@ -186,14 +195,14 @@ class SlackifiedControlAffineASIF(ControlAffineASIF):
 
 
 class TimeVaryingASIF:
-    def __init__(self, asifs: Dict[int, ASIF], condition: callable): 
+    def __init__(self, asifs: Dict[int, ASIF], condition: callable):
         self.asifs = asifs
         self.condition = condition
 
     def __call__(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> Array:
         asif_idx = self.condition(state, time)
         return self.asifs[asif_idx](state, time, nominal_control)
-    
+
     def save_info(self, state: Array, control: Array, time: float = 0.0) -> Dict:
         asif_idx = self.condition(state, time)
         return self.asifs[asif_idx].save_info(state, control, time)
