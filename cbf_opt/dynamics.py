@@ -20,6 +20,16 @@ class Dynamics(metaclass=abc.ABCMeta):
         self.periodic_dims = self.PERIODIC_DIMS if hasattr(self, "PERIODIC_DIMS") else []
         if test:
             test_dynamics.test_dynamics(self)
+    
+    def get_param_combinations(self, type="extrema"):
+        if type == "extrema":
+            import itertools
+            keys, values = zip(*self.all_params.items()) if len(self.all_params) > 0 else ((), ())
+            extremum_values = (v if isinstance(v, list) else [v] for v in values)
+            extrema = [dict(zip(keys, v)) for v in itertools.product(*extremum_values)]
+            return extrema
+        else:
+            raise NotImplementedError("Only extrema implemented")
 
     @abc.abstractmethod
     def f(self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0):
