@@ -5,7 +5,7 @@ from cbf_opt.tests import test_dynamics
 
 
 class Dynamics(metaclass=abc.ABCMeta):
-    def __init__(self, params: dict, test: bool = True, **kwargs):
+    def __init__(self, params: dict = {}, test: bool = True, **kwargs):
         self.n_dims = len(self.STATES) if hasattr(self, "STATES") else kwargs["n_dims"]
         self.control_dims = len(self.CONTROLS) if hasattr(self, "CONTROLS") else kwargs["control_dims"]
         self.disturbance_dims = (
@@ -132,7 +132,7 @@ class Dynamics(metaclass=abc.ABCMeta):
 
 
 class ControlAffineDynamics(Dynamics):
-    def __init__(self, params: dict, test: bool = True, **kwargs):
+    def __init__(self, params: dict = {}, test: bool = True, **kwargs):
         super().__init__(params, test, **kwargs)
         if test:
             test_dynamics.test_control_affine_dynamics(self)

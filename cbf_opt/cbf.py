@@ -51,7 +51,8 @@ class ControlAffineCBF(CBF):
         """
         grad_vf = self._grad_vf(state, time)
 
-        keys, values = zip(*self.dynamics.all_params.items())
+        # self.dynamics.all_params is False if it is empty (aka no parameters for system)
+        keys, values = zip(*self.dynamics.all_params.items()) if self.dynamics.all_params else ((), ())
         extremum_values = (v if isinstance(v, list) else [v] for v in values)
         extremums = [dict(zip(keys, v)) for v in itertools.product(*extremum_values)]
 
