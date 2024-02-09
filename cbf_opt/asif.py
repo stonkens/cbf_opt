@@ -5,7 +5,7 @@ import numpy as np
 from cbf_opt import Dynamics, ControlAffineDynamics
 from cbf_opt import CBF, ControlAffineCBF, ImplicitCBF, ControlAffineImplicitCBF, BackupController
 from typing import Dict, Optional
-from cbf_opt.tests import test_asif
+import warnings
 
 import logging
 
@@ -28,8 +28,8 @@ class ASIF(metaclass=abc.ABCMeta):
         self.solver = kwargs.get("solver", "OSQP")
         self.nominal_policy = kwargs.get("nominal_policy", lambda x, t: np.zeros(self.dynamics.control_dims))
         self.controller_dt = kwargs.get("controller_dt", self.dynamics.dt)
-        if test:
-            test_asif.test_asif(self)
+        if kwargs.get("test") is not None:
+            warnings.warn("Tes functionality will be removed in a future version", DeprecationWarning)
 
     def _set_nominal_control(self, state: Array, time: float = 0.0, nominal_control: Optional[Array] = None) -> None:
         if nominal_control is not None:
@@ -71,9 +71,6 @@ class ControlAffineASIF(ASIF):
         self.A = cp.Parameter((2**self.dynamics.nbr_uncertain_params, self.dynamics.control_dims))
 
         self.opt_sol = np.zeros(self.filtered_control.shape)
-
-        if test:
-            test_asif.test_control_affine_asif(self)
 
     def setup_optimization_problem(self):
         """

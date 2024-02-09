@@ -1,4 +1,3 @@
-from cbf_opt import tests
 from cbf_opt import utils
 from cbf_opt.dynamics import Dynamics, ControlAffineDynamics, PartialObservableDynamics, BatchedDynamics
 from cbf_opt.cbf import (

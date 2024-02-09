@@ -2,15 +2,15 @@ import abc
 from typing import Any, Tuple, Dict
 import numpy as np
 from cbf_opt import Dynamics, ControlAffineDynamics
-from cbf_opt.tests import test_cbf
+import warnings
 import itertools
 
 
 class CBF(metaclass=abc.ABCMeta):
-    def __init__(self, dynamics: Dynamics, params: Dict[str, Any], test: bool = True, **kwargs) -> None:
+    def __init__(self, dynamics: Dynamics, **kwargs) -> None:
         self.dynamics = dynamics
-        if test:
-            test_cbf.test_cbf(self)
+        if kwargs.get("test") is not None:
+            warnings.warn("Test functionality will be removed in a future version", DeprecationWarning)
 
     def is_safe(self, state: np.ndarray, time: float = 0.0) -> bool:
         """Evaluates h(x, t) >= 0"""
@@ -24,9 +24,9 @@ class CBF(metaclass=abc.ABCMeta):
     def vf(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the value function h(x)"""
 
-    @abc.abstractmethod
-    def _grad_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
-        """Implements the gradient of the value function h(x)"""
+    # @abc.abstractmethod
+    # def _grad_vf(self, state: np.ndarray, time: float = 0.0) -> np.ndarray:
+    #     """Implements the gradient of the value function h(x)"""
 
     def vf_dt_partial(self, state: np.ndarray, time: float = 0.0) -> float:
         """Implements the partial derivative of the time derivative of the value function h(x)
@@ -39,10 +39,8 @@ class CBF(metaclass=abc.ABCMeta):
 
 
 class ControlAffineCBF(CBF):
-    def __init__(self, dynamics: ControlAffineDynamics, params: Dict[str, Any], test: bool = True, **kwargs) -> None:
-        super().__init__(dynamics, params, test, **kwargs)
-        if test:
-            test_cbf.test_control_affine_cbf(self)
+    def __init__(self, dynamics: ControlAffineDynamics, **kwargs) -> None:
+        super().__init__(dynamics, **kwargs)
 
     def lie_derivatives(self, state: np.ndarray, time: float = 0.0) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -96,13 +94,11 @@ class ExponentialControlAffineCBF(ControlAffineCBF):
 
 # TOTEST
 class BackupController:
-    def __init__(self, dynamics: Dynamics, T_backup: float, test: bool = True, **kwargs):
+    def __init__(self, dynamics: Dynamics, T_backup: float, **kwargs):
         self.dynamics = dynamics
         self.T_backup = T_backup
         self.umin = kwargs.get("umin", -np.infty * np.ones(dynamics.control_dims))
         self.umax = kwargs.get("umax", np.infty * np.ones(dynamics.control_dims))
-        if test:
-            test_cbf.test_backup_controller(self)
 
     @abc.abstractmethod
     def policy(self, x: np.ndarray, t: float = 0.0) -> np.ndarray:
@@ -154,17 +150,13 @@ class ImplicitCBF(CBF):
     def __init__(
         self,
         dynamics: Dynamics,
-        params: Dict[str, Any],
         backup_controller: BackupController,
         safety_cbf: CBF,
-        test: bool = True,
         **kwargs
     ) -> None:
         self.backup_controller = backup_controller
         self.safety_cbf = safety_cbf
-        super().__init__(dynamics, params, test=False, **kwargs)  # FIXME: test=False to avoid notimplemented error
-        if test:
-            test_cbf.test_implicit_cbf(self)
+        super().__init__(dynamics, **kwargs)
 
     def vf(self, x0: np.ndarray, t0: float = 0.0, break_unsafe: bool = False) -> float:
         # This is only used for the "hacky" version --> Is it?
@@ -220,15 +212,11 @@ class ControlAffineImplicitCBF(ImplicitCBF):
     def __init__(
         self,
         dynamics: ControlAffineDynamics,
-        params: Dict[str, Any],
         backup_controller: BackupController,
         safety_cbf: ControlAffineCBF,
-        test: bool = True,
         **kwargs
     ):
-        super().__init__(dynamics, params, backup_controller, safety_cbf, test, **kwargs)
-        if test:
-            test_cbf.test_implicit_control_affine_cbf(self)
+        super().__init__(dynamics, backup_controller, safety_cbf, **kwargs)
 
     def lie_derivatives(
         self,

@@ -1,11 +1,12 @@
 import abc
 import numpy as np
 from typing import Tuple
-from cbf_opt.tests import test_dynamics
+import warnings
+import jax
 
 
 class Dynamics(metaclass=abc.ABCMeta):
-    def __init__(self, params: dict = {}, test: bool = True, **kwargs):
+    def __init__(self, params: dict = {}, **kwargs):
         self.n_dims = len(self.STATES) if hasattr(self, "STATES") else kwargs["n_dims"]
         self.control_dims = len(self.CONTROLS) if hasattr(self, "CONTROLS") else kwargs["control_dims"]
         self.disturbance_dims = (
@@ -15,11 +16,14 @@ class Dynamics(metaclass=abc.ABCMeta):
         # Make a new dictionary with the fixed parameters set to their values, and the uncertain parameters set to None
         self.params = {k: None if not isinstance(v, (int, float)) else v for k, v in params.items()}
         self.nbr_uncertain_params = len([v for v in self.params.values() if v is None])
-        self.dt = kwargs["dt"]
+        self.dt = kwargs.get("dt")
+        if self.dt is None: 
+            warnings.warn("dt not set, set manually when running self.step", RuntimeWarning)
+
         self.step_scheme = kwargs.get("step_scheme", "fe")
         self.periodic_dims = self.PERIODIC_DIMS if hasattr(self, "PERIODIC_DIMS") else []
-        if test:
-            test_dynamics.test_dynamics(self)
+        if kwargs.get("test") is not None:
+            warnings.warn("Tes functionality will be removed in a future version", DeprecationWarning)
     
     def get_param_combinations(self, type="extrema"):
         if type == "extrema":
@@ -65,19 +69,17 @@ class Dynamics(metaclass=abc.ABCMeta):
     def state_jacobian(
         self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0
     ) -> np.ndarray:
-        raise NotImplementedError("Define state_jacobian in subclass")
+        return jax.jacfwd(lambda x: self.__call__(x, control, disturbance, time))(state)
 
-    @abc.abstractmethod
     def control_jacobian(
         self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0
     ) -> np.ndarray:
-        """Implements the control Jacobian df(x,u,d,t) / du"""
+        return jax.jacfwd(lambda x: self.__call__(state, x, disturbance, time))(control)
 
-    @abc.abstractmethod
     def disturbance_jacobian(
         self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0
     ) -> np.ndarray:
-        raise NotImplementedError("Define disturbance_jacobian in subclass")
+        return jax.jacfwd(lambda x: self.__call__(state, control, x, time))(disturbance)
 
     def linearized_ct_dynamics(
         self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0
@@ -132,10 +134,8 @@ class Dynamics(metaclass=abc.ABCMeta):
 
 
 class ControlAffineDynamics(Dynamics):
-    def __init__(self, params: dict = {}, test: bool = True, **kwargs):
-        super().__init__(params, test, **kwargs)
-        if test:
-            test_dynamics.test_control_affine_dynamics(self)
+    def __init__(self, params: dict = {}, **kwargs):
+        super().__init__(params, **kwargs)
 
     def f(
         self, state: np.ndarray, control: np.ndarray, disturbance: np.ndarray = None, time: float = 0.0
@@ -207,8 +207,8 @@ class BatchedDynamics:
 
 # TODO: Build wrapper for interface with openai gym (here the state is a class instance variable)
 class PartialObservableDynamics(Dynamics):
-    def __init__(self, params: dict, test: bool = True, **kwargs):
-        super().__init__(params, test, **kwargs)
+    def __init__(self, params: dict, **kwargs):
+        super().__init__(params, **kwargs)
         self.obs_dims = params["obs_dims"]
 
     @abc.abstractmethod
